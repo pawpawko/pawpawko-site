@@ -238,6 +238,14 @@ alter table public.binders add column if not exists flair text not null default 
 alter table public.binders add column if not exists category text not null default 'optcg' check (category in ('optcg','pokemon'));
 alter table public.binders add column if not exists layout text not null default '4x3' check (layout in ('4x3','3x3'));
 
+-- At most one Trade Binder and one Wishlist Binder per user per game.
+-- Partial unique indexes — other flair types (flex, lgs, future) are
+-- unrestricted. Drop these indexes if/when the restriction is relaxed.
+create unique index if not exists binders_one_trade_per_user_game
+  on public.binders (user_id, category) where flair = 'trade';
+create unique index if not exists binders_one_wishlist_per_user_game
+  on public.binders (user_id, category) where flair = 'wishlist';
+
 alter table public.binders enable row level security;
 drop policy if exists "binders_read"   on public.binders;
 drop policy if exists "binders_insert" on public.binders;
@@ -331,13 +339,26 @@ $$;
 revoke all on function public.get_binder_listings_public(uuid) from public;
 grant execute on function public.get_binder_listings_public(uuid) to anon, authenticated;
 
+-- City column on profiles — drives the multi-market expansion. Defaults
+-- to 'nyc' so existing rows backfill cleanly. Valid values are managed in
+-- the client config (window.CITIES) rather than a DB constraint for now,
+-- to make adding cities a frontend-only change.
+alter table public.profiles add column if not exists city text not null default 'nyc';
+create index if not exists profiles_city_idx on public.profiles(city);
+
 drop function if exists public.search_binders(text, text, text);
 drop function if exists public.search_binders(text[], text, text);
 drop function if exists public.search_binders(text[], text[], text);
+drop function if exists public.search_binders(text[], text[], text, text);
+drop function if exists public.search_binders(text[], text[], text, text, text);
+drop function if exists public.search_binders(text[], text[], text, text, text, text[]);
 create or replace function public.search_binders(
-  p_boroughs text[] default null,
-  p_subways  text[] default null,
-  p_shop     text default null
+  p_boroughs   text[] default null,
+  p_subways    text[] default null,
+  p_shop       text   default null,
+  p_category   text   default null,
+  p_city       text   default null,
+  p_card_codes text[] default null
 ) returns table (
   binder_id          uuid,
   user_id            uuid,
@@ -347,21 +368,46 @@ create or replace function public.search_binders(
   sleeve_image_url   text,
   flair              text,
   category           text,
-  last_updated_at    timestamptz
+  last_updated_at    timestamptz,
+  matched_card_count int,
+  matched_cards      text[]
 ) language sql stable security definer set search_path = public as $$
-  select b.id, b.user_id, p.display_name, b.name, b.description, b.sleeve_image_url,
-         b.flair, b.category,
-         coalesce((select max(l.created_at) from public.listings l where l.binder_id = b.id), b.created_at) as last_updated_at
-  from public.binders b
-  join public.profiles p on p.user_id = b.user_id
-  where (p_boroughs is null or coalesce(array_length(p_boroughs, 1), 0) = 0 or p.boroughs && p_boroughs)
-    and (p_subways  is null or coalesce(array_length(p_subways,  1), 0) = 0 or p.subway_stops && p_subways)
-    and (p_shop     is null or p_shop = any(p.local_shops))
-  order by coalesce((select max(l.created_at) from public.listings l where l.binder_id = b.id), b.created_at) desc
+  with searched as (
+    select b.id as binder_id, b.user_id, p.display_name,
+           b.name as binder_name, b.description as binder_description,
+           b.sleeve_image_url, b.flair, b.category,
+           coalesce((select max(l.created_at) from public.listings l where l.binder_id = b.id), b.created_at) as last_updated_at,
+           (case when p_card_codes is null or coalesce(array_length(p_card_codes, 1), 0) = 0
+                 then 0
+                 else (select count(distinct l.card_code)::int
+                         from public.listings l
+                        where l.binder_id = b.id and l.card_code = any(p_card_codes))
+            end) as matched_card_count,
+           (case when p_card_codes is null or coalesce(array_length(p_card_codes, 1), 0) = 0
+                 then null::text[]
+                 else (select array_agg(distinct l.card_code order by l.card_code)
+                         from public.listings l
+                        where l.binder_id = b.id and l.card_code = any(p_card_codes))
+            end) as matched_cards
+    from public.binders b
+    join public.profiles p on p.user_id = b.user_id
+    where b.flair <> 'wishlist'
+      and (p_city     is null or p.city = p_city)
+      and (p_boroughs is null or coalesce(array_length(p_boroughs, 1), 0) = 0 or p.boroughs && p_boroughs)
+      and (p_subways  is null or coalesce(array_length(p_subways,  1), 0) = 0 or p.subway_stops && p_subways)
+      and (p_shop     is null or p_shop = any(p.local_shops))
+      and (p_category is null or b.category = p_category)
+  )
+  select *
+  from searched
+  where p_card_codes is null
+    or coalesce(array_length(p_card_codes, 1), 0) = 0
+    or matched_card_count > 0
+  order by matched_card_count desc, last_updated_at desc
   limit 200;
 $$;
-revoke all on function public.search_binders(text[], text[], text) from public;
-grant execute on function public.search_binders(text[], text[], text) to anon, authenticated;
+revoke all on function public.search_binders(text[], text[], text, text, text, text[]) from public;
+grant execute on function public.search_binders(text[], text[], text, text, text, text[]) to anon, authenticated;
 
 -- ---------- AUTO-CREATE PROFILE ON SIGNUP ----------
 

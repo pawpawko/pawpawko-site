@@ -137,7 +137,7 @@
     loadListings(isOwner, isLoggedIn);
   }
 
-  const FLAIR_LABELS = { trade: 'Trade Binder', flex: 'Flex Binder', lgs: 'Local Game Store' };
+  const FLAIR_LABELS = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' };
   const CATEGORY_LABELS = { optcg: 'OPTCG', pokemon: 'Pokémon' };
 
   function renderCategory(category) {

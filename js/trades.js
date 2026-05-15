@@ -4,31 +4,67 @@
 
 (function () {
   // ----- Pill-in-dropdown helper -----
+  // values: either an array of strings (value === label) or an array of
+  //         { value, label } objects.
+  // singleSelect: when true, clicking a pill clears any other selection.
+  // onChange: optional callback fired after selection changes;
+  //           receives the array of currently-selected values.
+  // The returned API exposes setValues() so callers can swap the pill set
+  // at runtime (used to cascade borough → subway).
   function buildPillDropdown(opts) {
-    const { values, pillsEl, btnEl, panelEl, labelEl, defaultLabel } = opts;
-    values.forEach(v => {
-      const pill = document.createElement('button');
-      pill.type = 'button';
-      pill.className = 'filter-pill-toggle';
-      pill.dataset.value = v;
-      pill.textContent = v;
-      pill.setAttribute('aria-pressed', 'false');
-      pill.addEventListener('click', () => {
-        pill.classList.toggle('active');
-        pill.setAttribute('aria-pressed', pill.classList.contains('active'));
-        refreshLabel();
+    const {
+      pillsEl, btnEl, panelEl, labelEl, defaultLabel,
+      singleSelect = false, onChange = null, emptyHint = null,
+    } = opts;
+
+    function normalize(items) {
+      return (items || []).map(v => typeof v === 'string' ? { value: v, label: v } : v);
+    }
+
+    function buildPills(items) {
+      pillsEl.innerHTML = '';
+      const normalized = normalize(items);
+      if (normalized.length === 0 && emptyHint) {
+        const hint = document.createElement('div');
+        hint.className = 'filter-pill-hint';
+        hint.textContent = emptyHint;
+        pillsEl.appendChild(hint);
+        return;
+      }
+      normalized.forEach(item => {
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'filter-pill-toggle';
+        pill.dataset.value = item.value;
+        pill.textContent = item.label;
+        pill.setAttribute('aria-pressed', 'false');
+        pill.addEventListener('click', () => {
+          if (singleSelect && !pill.classList.contains('active')) {
+            pillsEl.querySelectorAll('.filter-pill-toggle.active').forEach(p => {
+              p.classList.remove('active');
+              p.setAttribute('aria-pressed', 'false');
+            });
+          }
+          pill.classList.toggle('active');
+          pill.setAttribute('aria-pressed', pill.classList.contains('active'));
+          refreshLabel();
+          if (onChange) onChange(selected());
+        });
+        pillsEl.appendChild(pill);
       });
-      pillsEl.appendChild(pill);
-    });
+    }
+
     function selected() {
       return [...pillsEl.querySelectorAll('.filter-pill-toggle.active')].map(p => p.dataset.value);
     }
+
     function refreshLabel() {
-      const sel = selected();
-      labelEl.textContent = sel.length === 0 ? defaultLabel
-        : sel.length === 1 ? sel[0]
-        : `${sel.length} selected`;
+      const activePills = pillsEl.querySelectorAll('.filter-pill-toggle.active');
+      if (activePills.length === 0) { labelEl.textContent = defaultLabel; return; }
+      if (activePills.length === 1) { labelEl.textContent = activePills[0].textContent; return; }
+      labelEl.textContent = `${activePills.length} selected`;
     }
+
     function reset() {
       pillsEl.querySelectorAll('.filter-pill-toggle').forEach(p => {
         p.classList.remove('active');
@@ -36,6 +72,37 @@
       });
       refreshLabel();
     }
+
+    // Swap in a different list of pills, preserving any active selections
+    // that still appear in the new set. Used for borough → subway cascade.
+    function setValues(items) {
+      const wasSelected = new Set(selected());
+      buildPills(items);
+      pillsEl.querySelectorAll('.filter-pill-toggle').forEach(p => {
+        if (wasSelected.has(p.dataset.value)) {
+          p.classList.add('active');
+          p.setAttribute('aria-pressed', 'true');
+        }
+      });
+      refreshLabel();
+    }
+
+    // Programmatically mark a set of values as active. With silent=true
+    // (the default for bootstrap flows), onChange is NOT fired — callers
+    // typically run the cascade manually when seeding from profile data.
+    function setSelected(values, silent = true) {
+      const wanted = new Set(values || []);
+      pillsEl.querySelectorAll('.filter-pill-toggle').forEach(p => {
+        const isOn = wanted.has(p.dataset.value);
+        p.classList.toggle('active', isOn);
+        p.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+      });
+      refreshLabel();
+      if (!silent && onChange) onChange(selected());
+    }
+
+    buildPills(opts.values);
+
     btnEl.addEventListener('click', (e) => {
       e.stopPropagation();
       const open = !panelEl.hasAttribute('hidden');
@@ -49,27 +116,93 @@
         btnEl.setAttribute('aria-expanded', 'false');
       }
     });
-    return { selected, reset };
+
+    return { selected, reset, setValues, setSelected };
   }
 
+  // Category is implemented as tabs above the filter row, not as a dropdown.
+  // The active tab's data-category attribute is the canonical state. Default
+  // is OPTCG (matches the first tab marked `.active` in trades.html). Tab
+  // clicks fire loadBinders directly, so category works for anon users
+  // without needing the Apply button.
+  let currentCategory = 'optcg';
+  const selectedCategoryTab = () => currentCategory || null;
+
+  const cityDD = buildPillDropdown({
+    values:    window.CITIES || [],
+    pillsEl:   document.getElementById('cityPills'),
+    btnEl:     document.getElementById('cityBtn'),
+    panelEl:   document.getElementById('cityPanel'),
+    labelEl:   document.getElementById('cityLabel'),
+    defaultLabel: 'Any',
+    singleSelect: true,
+    onChange:  refreshBoroughDropdown,
+  });
+  // Borough and subway start empty — they only populate once the user
+  // picks the upstream filter (city for borough; borough for subway).
   const boroughDD = buildPillDropdown({
-    values:    window.NYC_BOROUGHS || [],
+    values:    [],
     pillsEl:   document.getElementById('boroughPills'),
     btnEl:     document.getElementById('boroughBtn'),
     panelEl:   document.getElementById('boroughPanel'),
     labelEl:   document.getElementById('boroughLabel'),
     defaultLabel: 'Any',
+    emptyHint: 'Select a city first',
+    onChange:  refreshSubwayDropdown,
   });
   const subwayDD = buildPillDropdown({
-    values:    window.NYC_MAJOR_SUBWAY_STOPS || [],
+    values:    [],
     pillsEl:   document.getElementById('subwayPills'),
     btnEl:     document.getElementById('subwayBtn'),
     panelEl:   document.getElementById('subwayPanel'),
     labelEl:   document.getElementById('subwayLabel'),
     defaultLabel: 'Any',
+    emptyHint: 'Select a borough first',
   });
   const selectedBoroughs = () => boroughDD.selected();
   const selectedSubways  = () => subwayDD.selected();
+  const selectedCategory = selectedCategoryTab;
+  const selectedCity     = () => cityDD.selected()[0] || null;
+
+  // When city changes, swap the borough pill set to that city's
+  // neighborhoods. With no city selected, the borough dropdown stays
+  // empty (its hint prompts the user to pick a city first). Cascades
+  // into the subway dropdown via refreshSubwayDropdown.
+  function refreshBoroughDropdown(currentCitySelection) {
+    const city = (currentCitySelection && currentCitySelection[0]) || null;
+    const byCity = window.BOROUGHS_BY_CITY || {};
+    boroughDD.setValues(city ? (byCity[city] || []) : []);
+    refreshSubwayDropdown(boroughDD.selected());
+  }
+
+  // Subway data exists only for NYC. For any other city, disable the
+  // subway dropdown and show "N/A". For NYC, the dropdown stays empty
+  // (hint visible) until at least one borough is selected, then narrows
+  // to those boroughs' stops.
+  function refreshSubwayDropdown(currentBoroughs) {
+    const city = selectedCity();
+    const subwayBtn   = document.getElementById('subwayBtn');
+    const subwayLabel = document.getElementById('subwayLabel');
+
+    if (city && city !== 'nyc') {
+      subwayDD.setValues([]);
+      subwayBtn.disabled = true;
+      subwayBtn.setAttribute('aria-disabled', 'true');
+      subwayLabel.textContent = 'N/A';
+      return;
+    }
+
+    subwayBtn.disabled = false;
+    subwayBtn.removeAttribute('aria-disabled');
+
+    if (!currentBoroughs || currentBoroughs.length === 0) {
+      subwayDD.setValues([]);
+      return;
+    }
+    const byBorough = window.NYC_MAJOR_SUBWAY_STOPS_BY_BOROUGH || {};
+    const stops = currentBoroughs.flatMap(b => byBorough[b] || []);
+    subwayDD.setValues(stops);
+  }
 
   const setupNotice = document.getElementById('setupNotice');
   setupNotice.innerHTML = window.PK.notReadyMessage();
@@ -91,16 +224,24 @@
     listEl.innerHTML = '';
     if (pageEl) pageEl.innerHTML = '';
 
-    isLoggedInCached = !!(await window.PK.currentUser());
-
-    const boroughs = selectedBoroughs();
-    const subways  = selectedSubways();
-    const shop     = document.getElementById('filterShop').value.trim() || null;
+    // Category is the only filter anon users can apply. Everything else
+    // (city / borough / subway / shop / cards) is gated behind sign-in.
+    const category = selectedCategory();
+    const city     = isLoggedInCached ? selectedCity()     : null;
+    const boroughs = isLoggedInCached ? selectedBoroughs() : [];
+    const subways  = isLoggedInCached ? selectedSubways()  : [];
+    const shop     = isLoggedInCached
+      ? (document.getElementById('filterShop').value.trim() || null)
+      : null;
+    const cardCodes = isLoggedInCached ? parsedCardCodes() : [];
 
     let { data, error } = await window.sb.rpc('search_binders', {
-      p_boroughs: boroughs.length ? boroughs : null,
-      p_subways:  subways.length  ? subways  : null,
-      p_shop: shop
+      p_boroughs:   boroughs.length ? boroughs : null,
+      p_subways:    subways.length  ? subways  : null,
+      p_shop:       shop,
+      p_category:   category,
+      p_city:       city,
+      p_card_codes: cardCodes.length ? cardCodes : null
     });
 
     if (error) {
@@ -147,16 +288,17 @@
   function buildBinderRow(p) {
     const li = document.createElement('li');
     li.className = 'binder-row';
-    let metaHtml = '';
-    if (!isLoggedInCached) {
-      metaHtml = `<div class="binder-row-meta"><span class="locked-pill"><a href="account.html">Sign in</a> to see location</span></div>`;
-    }
     const flair = p.flair || 'trade';
-    const flairLabel = { trade: 'Trade Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
+    const flairLabel = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
     const cat = p.category || 'optcg';
     const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon' }[cat] || 'OPTCG';
     const updatedLabel = formatLastUpdated(p.last_updated_at);
     const href = `binder.html?id=${encodeURIComponent(p.binder_id)}`;
+    const matchedCount = p.matched_card_count || 0;
+    const matchedCards = p.matched_cards || [];
+    const matchedHtml = matchedCount > 0
+      ? `<button type="button" class="matched-badge" aria-expanded="false">${matchedCount} card${matchedCount === 1 ? '' : 's'} matched</button>`
+      : '';
     li.innerHTML = `
       <a href="${href}" class="binder-row-link">
         <div class="binder-row-header">
@@ -167,8 +309,32 @@
           </div>
           ${updatedLabel ? `<div class="binder-row-updated">${escapeHtml(updatedLabel)}</div>` : ''}
         </div>
-        ${metaHtml}
+        ${matchedHtml}
       </a>`;
+
+    // Wire the matched-cards badge: clicking toggles an inline expansion
+    // showing which card codes matched, without navigating to the binder.
+    const badge = li.querySelector('.matched-badge');
+    if (badge) {
+      badge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const existing = li.querySelector('.matched-expansion');
+        if (existing) {
+          existing.remove();
+          badge.setAttribute('aria-expanded', 'false');
+          return;
+        }
+        const expansion = document.createElement('div');
+        expansion.className = 'matched-expansion';
+        expansion.innerHTML = matchedCards
+          .map(c => `<span class="matched-card-chip">${escapeHtml(c)}</span>`)
+          .join('');
+        li.appendChild(expansion);
+        badge.setAttribute('aria-expanded', 'true');
+      });
+    }
+
     return li;
   }
 
@@ -204,13 +370,237 @@
     return `${slugifyPart(displayName)}_${slugifyPart(binderName)}`;
   }
 
-  document.getElementById('applyFilters').addEventListener('click', loadBinders);
-  document.getElementById('clearFilters').addEventListener('click', () => {
-    boroughDD.reset();
-    subwayDD.reset();
-    document.getElementById('filterShop').value = '';
-    loadBinders();
-  });
+  // ====================================================================
+  // Card-search autocomplete
+  // ====================================================================
+  // The card input accepts a comma-separated list of card codes. The
+  // active "segment" (the partial code being typed between commas) drives
+  // a suggestion popup populated from window.sb.from('cards'). Up/Down
+  // navigates suggestions, Enter accepts the highlighted one.
 
-  loadBinders();
+  let cardCodesAll = [];   // [{card_code, name}, ...] for the active category
+  let activeSuggIndex = -1;
+  let cardSuggBox, cardInput;
+
+  // Fetch all card codes for the active category. Currently the cards
+  // table has no per-game discriminator (all rows are OPTCG), so this
+  // fetch is the same regardless of tab. Wired through `category` for
+  // when a `cards.game` column is added.
+  async function refreshCardSuggestionsSource(category) {
+    if (!window.SB_READY) return;
+    // For now, ignore category server-side — all cards in DB are OPTCG.
+    const { data, error } = await window.sb
+      .from('cards')
+      .select('card_code, name')
+      .order('card_code')
+      .limit(5000);
+    if (error) { console.warn('[Pawpaw Ko] card suggestions fetch failed', error); cardCodesAll = []; return; }
+    cardCodesAll = data || [];
+  }
+
+  // The comma-separated segment around the caret.
+  function getActiveSegment(input) {
+    const v = input.value;
+    const pos = input.selectionStart != null ? input.selectionStart : v.length;
+    const beforeChunk = v.slice(0, pos).split(',').pop() || '';
+    const afterChunk  = v.slice(pos).split(',')[0] || '';
+    const start = pos - beforeChunk.length;
+    const end   = pos + afterChunk.length;
+    return { text: (beforeChunk + afterChunk).trim(), start, end };
+  }
+
+  function renderSuggestions(seg) {
+    if (!cardSuggBox) return;
+    if (!seg.text || seg.text.length < 1) { cardSuggBox.hidden = true; return; }
+    const q = seg.text.toUpperCase();
+    const matches = cardCodesAll
+      .filter(c => c.card_code.toUpperCase().includes(q))
+      .slice(0, 10);
+    if (matches.length === 0) { cardSuggBox.hidden = true; return; }
+    cardSuggBox.innerHTML = matches.map((c, i) => `
+      <div class="card-sugg-item${i === 0 ? ' active' : ''}" data-card="${escapeHtml(c.card_code)}" role="option">
+        <span class="card-sugg-code">${escapeHtml(c.card_code)}</span>
+        <span class="card-sugg-name">${escapeHtml(c.name || '')}</span>
+      </div>`).join('');
+    cardSuggBox.hidden = false;
+    activeSuggIndex = 0;
+  }
+
+  function acceptSuggestion(idx) {
+    if (!cardSuggBox || !cardInput) return;
+    const items = cardSuggBox.querySelectorAll('.card-sugg-item');
+    if (idx < 0 || idx >= items.length) return;
+    const code = items[idx].dataset.card;
+    const seg = getActiveSegment(cardInput);
+    const before = cardInput.value.slice(0, seg.start);
+    const afterRaw = cardInput.value.slice(seg.end);
+    const after = afterRaw.startsWith(',') ? afterRaw : '';
+    cardInput.value = before + code + (after || ', ');
+    // Place caret after the inserted comma+space so the user can keep typing
+    const caret = (before + code + ', ').length;
+    cardInput.setSelectionRange(caret, caret);
+    cardSuggBox.hidden = true;
+    activeSuggIndex = -1;
+    cardInput.focus();
+  }
+
+  function updateSuggActiveUI() {
+    if (!cardSuggBox) return;
+    cardSuggBox.querySelectorAll('.card-sugg-item').forEach((it, i) => {
+      it.classList.toggle('active', i === activeSuggIndex);
+    });
+  }
+
+  function setupCardAutocomplete() {
+    cardInput   = document.getElementById('filterCards');
+    cardSuggBox = document.getElementById('cardSuggestions');
+    if (!cardInput || !cardSuggBox) return;
+
+    cardInput.addEventListener('input', () => {
+      renderSuggestions(getActiveSegment(cardInput));
+    });
+
+    cardInput.addEventListener('keydown', (e) => {
+      const open = !cardSuggBox.hidden;
+      const items = cardSuggBox.querySelectorAll('.card-sugg-item');
+      if (e.key === 'ArrowDown' && open) {
+        e.preventDefault();
+        activeSuggIndex = Math.min(activeSuggIndex + 1, items.length - 1);
+        updateSuggActiveUI();
+      } else if (e.key === 'ArrowUp' && open) {
+        e.preventDefault();
+        activeSuggIndex = Math.max(activeSuggIndex - 1, 0);
+        updateSuggActiveUI();
+      } else if (e.key === 'Enter' && open && activeSuggIndex >= 0) {
+        e.preventDefault();
+        acceptSuggestion(activeSuggIndex);
+      } else if (e.key === 'Enter' && !open) {
+        // No suggestion shown — submit the current filter set (only for
+        // signed-in users; anon's input is disabled).
+        e.preventDefault();
+        if (isLoggedInCached) loadBinders();
+      } else if (e.key === 'Escape') {
+        cardSuggBox.hidden = true;
+      } else if (e.key === 'Tab' && open && activeSuggIndex >= 0) {
+        e.preventDefault();
+        acceptSuggestion(activeSuggIndex);
+      }
+    });
+
+    cardSuggBox.addEventListener('mousedown', (e) => {
+      // mousedown (not click) so we accept before the input loses focus
+      const item = e.target.closest('.card-sugg-item');
+      if (!item) return;
+      e.preventDefault();
+      const items = cardSuggBox.querySelectorAll('.card-sugg-item');
+      const idx = [...items].indexOf(item);
+      acceptSuggestion(idx);
+    });
+
+    cardInput.addEventListener('blur', () => {
+      // Close suggestions on blur, but with a tiny delay so clicks register
+      setTimeout(() => { if (cardSuggBox) cardSuggBox.hidden = true; }, 120);
+    });
+  }
+
+  // Parse the comma-separated card-codes the user has typed.
+  // Returns an upper-cased, trimmed, de-duped list. Empty list when the
+  // input is empty or the user is anon.
+  function parsedCardCodes() {
+    const el = document.getElementById('filterCards');
+    if (!el || !el.value) return [];
+    const codes = el.value.split(',')
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean);
+    return [...new Set(codes)];
+  }
+
+  // Pre-fill the city / borough / subway filters from a signed-in user's
+  // profile, so the first search reflects their saved preferences. The
+  // cascade is driven manually (instead of via onChange) so each step
+  // sees the freshly-populated upstream filter.
+  async function applyProfileDefaults(user) {
+    if (!user) return;
+    const { data, error } = await window.sb
+      .from('profiles')
+      .select('city, boroughs, subway_stops')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error || !data) return;
+
+    if (data.city) {
+      cityDD.setSelected([data.city]);
+      refreshBoroughDropdown([data.city]);
+    }
+    if (Array.isArray(data.boroughs) && data.boroughs.length > 0) {
+      boroughDD.setSelected(data.boroughs);
+      refreshSubwayDropdown(data.boroughs);
+    }
+    if (Array.isArray(data.subway_stops) && data.subway_stops.length > 0) {
+      subwayDD.setSelected(data.subway_stops);
+    }
+  }
+
+  (async function init() {
+    const user = await window.PK.currentUser();
+    isLoggedInCached = !!user;
+
+    // Wire up the category tabs. Each click sets the active tab, refreshes
+    // the autocomplete source for that game, and reloads. Works for
+    // everyone (anon + signed in) — the tabs are the one filter that
+    // doesn't require sign-in.
+    const tabsEl = document.getElementById('categoryTabs');
+    if (tabsEl) {
+      tabsEl.addEventListener('click', async (e) => {
+        const tab = e.target.closest('.category-tab');
+        if (!tab || tab.classList.contains('active')) return;
+        tabsEl.querySelectorAll('.category-tab').forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+        currentCategory = tab.dataset.category || 'optcg';
+        await refreshCardSuggestionsSource(currentCategory);
+        loadBinders();
+      });
+    }
+
+    // Set up the card-search autocomplete once we know the user state.
+    setupCardAutocomplete();
+    await refreshCardSuggestionsSource(currentCategory);
+
+    if (isLoggedInCached) {
+      // Pre-populate filters from the user's profile before the first
+      // search runs.
+      await applyProfileDefaults(user);
+
+      document.getElementById('applyFilters').addEventListener('click', loadBinders);
+      document.getElementById('clearFilters').addEventListener('click', () => {
+        cityDD.reset();
+        boroughDD.reset();
+        subwayDD.reset();
+        document.getElementById('filterShop').value = '';
+        document.getElementById('filterCards').value = '';
+        document.getElementById('cardSuggestions').hidden = true;
+        refreshBoroughDropdown([]);
+        loadBinders();
+      });
+    } else {
+      // Anon users: replace Apply/Clear with a sign-in CTA for the
+      // location/card filters. The category tabs above still work.
+      const buttonsGroup = document.querySelector('.trades-filters-top .filter-buttons');
+      if (buttonsGroup) {
+        buttonsGroup.innerHTML = '<a href="account.html" class="btn btn-filled">Sign in to filter</a>';
+      }
+      // Anon users can't use the card-search input either.
+      const cardInputDisable = document.getElementById('filterCards');
+      if (cardInputDisable) {
+        cardInputDisable.disabled = true;
+        cardInputDisable.placeholder = 'Sign in to search by card';
+      }
+    }
+
+    loadBinders();
+  })();
 })();

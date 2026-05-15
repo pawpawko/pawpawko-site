@@ -59,7 +59,33 @@
     <div class="container">
       <div id="setupNotice"></div>
 
+      <div class="category-tabs" id="categoryTabs" role="tablist" aria-label="Filter by card game">
+        <button class="category-tab active" type="button" role="tab" data-category="optcg" aria-selected="true">OPTCG</button>
+        <button class="category-tab" type="button" role="tab" data-category="pokemon" aria-selected="false">Pokémon</button>
+      </div>
+
       <div class="trades-filters-top">
+        <div class="filter-group filter-group-cards">
+          <label class="form-label" for="filterCards">Cards</label>
+          <div class="card-autocomplete">
+            <input class="form-input" id="filterCards" type="text"
+                   placeholder="OP01-001, ST15-003, …"
+                   autocomplete="off" spellcheck="false">
+            <div class="card-suggestions" id="cardSuggestions" role="listbox" hidden></div>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="form-label">City</label>
+          <div class="pill-dropdown">
+            <button type="button" class="form-input pill-dropdown-btn" id="cityBtn" aria-expanded="false">
+              <span id="cityLabel">Any</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+            </button>
+            <div class="pill-dropdown-panel" id="cityPanel" hidden>
+              <div class="filter-pills" id="cityPills"></div>
+            </div>
+          </div>
+        </div>
         <div class="filter-group">
           <label class="form-label">Borough</label>
           <div class="pill-dropdown">

@@ -48,7 +48,18 @@
       const category = pillValue('newBinderCategory') || 'optcg';
       const flair    = pillValue('newBinderFlair') || 'trade';
       const { error } = await window.sb.from('binders').insert({ user_id: user.id, name, category, flair });
-      if (error) { errEl.textContent = error.message; return; }
+      if (error) {
+        // Friendly message for the partial-unique-index violation that
+        // enforces "only one trade/wishlist binder per user per game".
+        if (error.code === '23505' && /one_(trade|wishlist)_per_user_game/.test(error.message || '')) {
+          const flairName = flair === 'wishlist' ? 'wishlist' : 'trade';
+          const gameName = category === 'pokemon' ? 'Pokémon' : 'OPTCG';
+          errEl.textContent = `You already have a ${flairName} binder for ${gameName}. Only one per game is allowed.`;
+        } else {
+          errEl.textContent = error.message;
+        }
+        return;
+      }
       document.getElementById('newBinderForm').style.display = 'none';
       document.getElementById('newBinderName').value = '';
       loadBinders(user.id);
@@ -87,7 +98,7 @@
         ? `<div class="binder-card-sleeve" style="background-image:url(${escapeAttr(b.sleeve_image_url)})"></div>`
         : `<div class="binder-card-sleeve binder-card-sleeve-default">📓</div>`;
       const flair = b.flair || 'trade';
-      const flairLabel = { trade: 'Trade Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
+      const flairLabel = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
       const cat = b.category || 'optcg';
       const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon' }[cat] || 'OPTCG';
       li.innerHTML = `
