@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Binders — Pawpaw Ko</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="trades.html" class="active">Binders</a></li>
+          <li><a href="gallery.html">Events</a></li>
+          <li><a href="qa.html">FAQ</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+        <div class="nav-auth" id="navAuth">
+          <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
+          <div class="nav-profile-wrap">
+            <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-10 2.2-10 6.5V22h20v-1.5c0-4.3-5.6-6.5-10-6.5Z"/></svg>
+            </button>
+            <div class="nav-profile-dropdown" id="navProfileDropdown" role="menu">
+              <a href="account.html" class="nav-profile-menu-item" role="menuitem">Profile</a>
+              <a href="my-binders.html" class="nav-profile-menu-item" role="menuitem">My Binders</a>
+              <div class="nav-profile-divider"></div>
+              <button class="nav-profile-menu-item" id="navProfileSignOut" role="menuitem">Log Out</button>
+            </div>
+          </div>
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <nav class="nav-mobile" id="navMobile">
+    <button class="nav-close" id="navClose">✕</button>
+    <a href="index.html">Home</a>
+    <a href="trades.html">Binders</a>
+    <a href="gallery.html">Events</a>
+    <a href="qa.html">FAQ</a>
+    <a href="contact.html">Contact</a>
+    <a href="account.html" id="mobileAuthLink">Account</a>
+  </nav>
+
+  <section class="section" style="padding-top: 8rem;">
+    <div class="container container-wide">
+      <div id="setupNotice"></div>
+
+      <div id="needsAuth" style="display:none;" class="notice notice-warn">
+        You must <a href="account.html">sign in</a> to view your binders.
+      </div>
+
+      <div id="bindersWrap" style="display:none;">
+        <div class="my-binders-header">
+          <div>
+            <h2 id="bindersTitle">My Binders</h2>
+            <p class="text-muted-line" id="bindersCount"></p>
+          </div>
+          <button class="btn btn-filled" id="newBinderBtn">+ New Binder</button>
+        </div>
+
+        <ul class="binders-grid" id="bindersGrid"></ul>
+
+        <!-- Inline new-binder form (hidden by default) -->
+        <form id="newBinderForm" class="new-binder-form" style="display:none;">
+          <h3>New Binder</h3>
+          <div class="divider"></div>
+          <div class="form-group">
+            <label class="form-label" for="newBinderName">Binder Name</label>
+            <input class="form-input" type="text" id="newBinderName" required placeholder="e.g. Trade Pile">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Game</label>
+            <div class="pill-choice" id="newBinderCategory">
+              <button type="button" class="pill-choice-btn active" data-value="optcg">One Piece TCG</button>
+              <button type="button" class="pill-choice-btn" data-value="pokemon">Pokémon</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Flair</label>
+            <div class="pill-choice" id="newBinderFlair">
+              <button type="button" class="pill-choice-btn flair-trade active" data-value="trade">Trade Binder</button>
+              <button type="button" class="pill-choice-btn flair-flex locked" data-value="flex" disabled>🔒 Flex Binder</button>
+              <button type="button" class="pill-choice-btn flair-lgs locked" data-value="lgs" disabled>🔒 Local Game Store</button>
+            </div>
+          </div>
+          <div style="display:flex; gap:1rem; margin-top: 1.5rem;">
+            <button type="submit" class="btn btn-filled">Create</button>
+            <button type="button" class="btn" id="cancelNewBinder">Cancel</button>
+          </div>
+          <p class="auth-error" id="newBinderError"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
+      <ul class="footer-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="trades.html">Binders</a></li>
+        <li><a href="gallery.html">Events</a></li>
+        <li><a href="qa.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <p class="footer-copy">© 2026 Pawpaw Ko. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/my-binders.js"></script>
+</body>
+</html>

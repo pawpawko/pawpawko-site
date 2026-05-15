@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account — Pawpaw Ko</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="trades.html">Binders</a></li>
+          <li><a href="gallery.html">Events</a></li>
+          <li><a href="qa.html">FAQ</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+        <div class="nav-auth" id="navAuth">
+          <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
+          <div class="nav-profile-wrap">
+            <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-10 2.2-10 6.5V22h20v-1.5c0-4.3-5.6-6.5-10-6.5Z"/></svg>
+            </button>
+            <div class="nav-profile-dropdown" id="navProfileDropdown" role="menu">
+              <a href="account.html" class="nav-profile-menu-item" role="menuitem">Profile</a>
+              <a href="my-binders.html" class="nav-profile-menu-item" role="menuitem">My Binders</a>
+              <div class="nav-profile-divider"></div>
+              <button class="nav-profile-menu-item" id="navProfileSignOut" role="menuitem">Log Out</button>
+            </div>
+          </div>
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <nav class="nav-mobile" id="navMobile">
+    <button class="nav-close" id="navClose">✕</button>
+    <a href="index.html">Home</a>
+    <a href="trades.html">Binders</a>
+    <a href="gallery.html">Events</a>
+    <a href="qa.html">FAQ</a>
+    <a href="contact.html">Contact</a>
+    <a href="account.html" id="mobileAuthLink">Account</a>
+  </nav>
+
+  <section class="section" style="padding-top: 8rem;">
+    <div class="container">
+      <div id="setupNotice"></div>
+
+      <!-- LOGGED OUT -->
+      <div id="authPanel" class="auth-panel" style="display:none;">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Sign In</button>
+          <button class="auth-tab" data-tab="signup">Sign Up</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <div class="form-group">
+            <label class="form-label" for="loginEmail">Email</label>
+            <input class="form-input" type="email" id="loginEmail" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="loginPassword">Password</label>
+            <input class="form-input" type="password" id="loginPassword" required>
+          </div>
+          <button type="submit" class="btn btn-filled">Sign In</button>
+          <p class="auth-error" id="loginError"></p>
+        </form>
+
+        <form id="signupForm" class="auth-form" style="display:none;">
+          <div class="form-group">
+            <label class="form-label" for="signupName">Display Name</label>
+            <input class="form-input" type="text" id="signupName" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="signupEmail">Email</label>
+            <input class="form-input" type="email" id="signupEmail" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="signupPassword">Password</label>
+            <input class="form-input" type="password" id="signupPassword" minlength="6" required>
+          </div>
+          <button type="submit" class="btn btn-filled">Create Account</button>
+          <p class="auth-error" id="signupError"></p>
+        </form>
+
+        <div class="auth-divider"><span>or continue with</span></div>
+
+        <div class="auth-oauth">
+          <button type="button" class="btn-google" id="googleAuthBtn">
+            <svg class="btn-google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="#EA4335" d="M12 10.2v3.92h5.45c-.24 1.42-1.7 4.16-5.45 4.16-3.28 0-5.96-2.72-5.96-6.08s2.68-6.08 5.96-6.08c1.87 0 3.12.8 3.84 1.48l2.62-2.52C16.78 3.6 14.6 2.6 12 2.6 6.92 2.6 2.8 6.72 2.8 11.8s4.12 9.2 9.2 9.2c5.32 0 8.84-3.74 8.84-9 0-.6-.06-1.06-.16-1.52H12z"/>
+              <path fill="#34A853" d="M3.86 7.6l3.22 2.36C7.96 8.06 9.82 6.72 12 6.72c1.87 0 3.12.8 3.84 1.48l2.62-2.52C16.78 3.6 14.6 2.6 12 2.6 8.36 2.6 5.22 4.7 3.86 7.6z" opacity="0"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
+          <button type="button" class="btn-discord" id="discordAuthBtn">
+            <svg class="btn-discord-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">
+              <path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.079-.037 19.736 19.736 0 0 0-3.76 1.17.07.07 0 0 0-.032.027C2.533 8.045 1.78 11.616 2.146 15.146a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.2 14.2 0 0 0 1.226-1.994.076.076 0 0 0-.041-.105 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.927 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.106c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-4.083-.838-7.624-3.549-10.75a.06.06 0 0 0-.031-.028zM8.02 12.997c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.956 2.419-2.157 2.419zm7.974 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/>
+            </svg>
+            <span>Continue with Discord</span>
+          </button>
+          <p class="auth-error" id="oauthError"></p>
+        </div>
+      </div>
+
+      <!-- LOGGED IN -->
+      <div id="dashboardPanel" style="display:none;">
+        <div class="dashboard-header">
+          <div>
+            <h2 id="welcomeName">Welcome back</h2>
+            <p id="welcomeEmail" class="text-muted-line"></p>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 class="mb-3">Profile</h3>
+        <form id="profileForm" class="profile-form">
+          <div class="form-group">
+            <label class="form-label" for="pfName">Display Name</label>
+            <input class="form-input" type="text" id="pfName" required>
+            <p class="form-hint">Tip: use your Bandai nickname so other players recognize you.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pfDiscord">Discord Handle</label>
+            <input class="form-input" type="text" id="pfDiscord" placeholder="yourname#0000 or @yourname">
+          </div>
+          <p class="form-hint" style="margin-bottom: 0.5rem;">Binder names, sleeve images, and per-binder settings live on <a href="my-binders.html">My Binders</a>.</p>
+          <div class="form-group">
+            <label class="form-label">Preferred Boroughs</label>
+            <div class="filter-pills" id="pfBoroughPills"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subway Stops</label>
+            <div class="pill-dropdown">
+              <button type="button" class="form-input pill-dropdown-btn" id="pfSubwayBtn" aria-expanded="false">
+                <span id="pfSubwayLabel">Any</span>
+                <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+              </button>
+              <div class="pill-dropdown-panel pill-dropdown-panel-tall" id="pfSubwayPanel" hidden>
+                <div class="filter-pills" id="pfSubwayPills"></div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pfShops">Local Card Shops (comma separated)</label>
+            <input class="form-input" type="text" id="pfShops" placeholder="The Comic Lab, Game Master">
+          </div>
+          <button type="submit" class="btn btn-filled">Save</button>
+          <p class="auth-error" id="profileError"></p>
+          <p class="auth-success" id="profileSuccess"></p>
+        </form>
+
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
+      <ul class="footer-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="trades.html">Binders</a></li>
+        <li><a href="gallery.html">Events</a></li>
+        <li><a href="qa.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <p class="footer-copy">© 2026 Pawpaw Ko. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/account.js"></script>
+</body>
+</html>

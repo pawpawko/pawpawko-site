@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pawpaw Ko</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="trades.html" class="active">Binders</a></li>
+          <li><a href="gallery.html">Events</a></li>
+          <li><a href="qa.html">FAQ</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+        <div class="nav-auth" id="navAuth">
+          <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
+          <div class="nav-profile-wrap">
+            <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-10 2.2-10 6.5V22h20v-1.5c0-4.3-5.6-6.5-10-6.5Z"/></svg>
+            </button>
+            <div class="nav-profile-dropdown" id="navProfileDropdown" role="menu">
+              <a href="account.html" class="nav-profile-menu-item" role="menuitem">Profile</a>
+              <a href="my-binders.html" class="nav-profile-menu-item" role="menuitem">My Binders</a>
+              <div class="nav-profile-divider"></div>
+              <button class="nav-profile-menu-item" id="navProfileSignOut" role="menuitem">Log Out</button>
+            </div>
+          </div>
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <nav class="nav-mobile" id="navMobile">
+    <button class="nav-close" id="navClose">✕</button>
+    <a href="index.html">Home</a>
+    <a href="trades.html">Binders</a>
+    <a href="gallery.html">Events</a>
+    <a href="qa.html">FAQ</a>
+    <a href="contact.html">Contact</a>
+    <a href="account.html" id="mobileAuthLink">Account</a>
+  </nav>
+
+  <div class="page-hero binder-hero">
+    <div class="container container-wide">
+      <div class="binder-title-row">
+        <h1 id="binderTitle">&nbsp;</h1>
+        <button class="share-btn" id="shareBtn" aria-label="Share binder" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 .17 4l-6.34 3.7A3 3 0 1 0 8 14l6.34 3.7A3 3 0 1 0 15 16l-6.34-3.7A3 3 0 0 0 8.66 11l6.34-3.7A3 3 0 0 0 18 8Z"/>
+          </svg>
+        </button>
+        <button class="btn" id="doneBtn" style="display:none;">Done</button>
+      </div>
+      <div class="binder-flair-row">
+        <span id="binderCategory" class="category-pill" style="display:none;"></span>
+        <span id="binderFlair" class="binder-flair-pill" style="display:none;"></span>
+        <div id="binderFlairChips" class="binder-flair-chips" style="display:none;">
+          <button type="button" class="binder-flair-chip flair-trade" data-flair="trade">Trade Binder</button>
+          <button type="button" class="binder-flair-chip flair-flex locked" data-flair="flex" disabled aria-disabled="true">🔒 Flex Binder</button>
+          <button type="button" class="binder-flair-chip flair-lgs locked" data-flair="lgs" disabled aria-disabled="true">🔒 Local Game Store</button>
+        </div>
+      </div>
+      <div class="share-popover" id="sharePopover" style="display:none;">
+        <p class="share-label">Share this binder</p>
+        <div class="share-url-row">
+          <input type="text" readonly id="shareUrl" class="form-input small">
+          <button class="btn small" id="shareCopyBtn">Copy</button>
+        </div>
+        <p class="share-feedback" id="shareFeedback"></p>
+      </div>
+      <p id="binderMeta" class="text-muted-line"></p>
+      <p id="binderUpdated" class="text-muted-line" style="font-size: 0.85em; opacity: 0.7;"></p>
+      <p id="binderContact" style="margin-top: 0.5rem;"></p>
+
+      <div class="binder-actions" id="binderActions" style="margin-top: 1.5rem; display:none;">
+        <button class="btn btn-filled" id="editBtn">Edit Binder</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="section binder-section">
+    <div class="container container-wide">
+      <div id="setupNotice"></div>
+
+      <div id="binderContent" class="binder-content">
+
+        <!-- Search toggle for non-owners and logged-out viewers -->
+        <div class="binder-search-toggle" id="binderSearchToggle" style="display:none;">
+          <button class="filter-pill binder-search-btn" id="searchThisBinder" type="button" aria-pressed="false">
+            <span>Search this binder</span>
+            <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M7 10l5 5 5-5z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Shared filter bar — visible in edit mode OR search mode -->
+        <div class="edit-filters" id="editFilters">
+          <div class="filter-group">
+            <label class="form-label" for="cbName">Search</label>
+            <input class="form-input" id="cbName" placeholder="Luffy, OP01-001, …">
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbSeries">Set</label>
+            <select class="form-input" id="cbSeries"><option value="">All</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbColor">Color</label>
+            <select class="form-input" id="cbColor"><option value="">All</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbType">Type</label>
+            <select class="form-input" id="cbType">
+              <option value="">All</option>
+              <option>LEADER</option><option>CHARACTER</option>
+              <option>EVENT</option><option>STAGE</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbCost">Cost</label>
+            <select class="form-input" id="cbCost"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbAttribute">Attribute</label>
+            <select class="form-input" id="cbAttribute">
+              <option value="">Any</option>
+              <option>Slash</option><option>Strike</option><option>Special</option>
+              <option>Wisdom</option><option>Ranged</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="form-label" for="cbRarity">Rarity</label>
+            <select class="form-input" id="cbRarity">
+              <option value="">Any</option>
+              <option>L</option><option>C</option><option>UC</option>
+              <option>R</option><option>SR</option><option>SEC</option>
+            </select>
+          </div>
+          <button class="btn" id="cbClear">Clear filters</button>
+        </div>
+
+        <div id="addCardsPanel" class="add-cards-panel">
+          <h3>Add Cards</h3>
+          <div class="divider"></div>
+          <p class="results-count" id="cbCount">Loading cards…</p>
+          <div class="card-browser-grid" id="cbGrid"></div>
+          <div class="binder-pagination" id="cbPagination"></div>
+
+          <!-- Inline "add to binder" panel (revealed when a card is clicked) -->
+          <div class="add-listing-modal" id="addListingModal" style="display:none;">
+            <div class="add-listing-inner">
+              <button class="add-listing-close" id="addListingClose" aria-label="Close">✕</button>
+              <div class="add-listing-card">
+                <img id="alCardImg" src="" alt="">
+                <div>
+                  <h4 id="alCardName"></h4>
+                  <p class="card-tile-code" id="alCardCode"></p>
+                </div>
+              </div>
+              <div class="add-listing-form">
+                <label class="form-label">Quantity
+                  <input type="number" id="alQty" class="form-input small" min="1" value="1">
+                </label>
+                <label class="form-label">Listing type
+                  <select id="alType" class="form-input small">
+                    <option value="trade">Trade Only</option>
+                    <option value="sell">Sell Only</option>
+                    <option value="free">Free</option>
+                    <option value="combo">Trade or Sell</option>
+                  </select>
+                </label>
+                <button class="btn btn-filled" id="alSave">Add to Binder</button>
+                <button class="btn" id="alRemove" style="display:none;">Remove all from Binder</button>
+                <p class="auth-error" id="alError"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="binder-cards-section">
+          <div class="binder-cards-header">
+            <h3 class="binder-cards-heading">
+              <button type="button" id="aestheticsToggle" class="aesthetics-toggle" title="Aesthetics mode — rearrange cards" aria-pressed="false">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2 14.6 8.2 21.2 8.7 16.2 13.1 17.8 19.6 12 16.1 6.2 19.6 7.8 13.1 2.8 8.7 9.4 8.2Z"/>
+                </svg>
+              </button>
+              <span class="binder-heading-text">Your Binder</span>
+              <select id="aestheticsSort" class="form-input small aesthetics-sort" style="display:none;">
+                <option value="custom-4x3">Custom (4x3)</option>
+                <option value="custom-3x3">Custom (3x3)</option>
+                <option value="release">Release order</option>
+                <option value="color">Color</option>
+                <option value="cost">Cost</option>
+              </select>
+            </h3>
+            <label class="checkbox-item filter-pill" id="excludeBinderToggle">
+              <input type="checkbox" id="cbExcludeBinder">
+              <span>Show all (ignore filters)</span>
+            </label>
+          </div>
+          <div class="divider"></div>
+          <p class="text-muted-line" id="binderStatus">Loading…</p>
+          <div class="card-grid" id="cardGrid"></div>
+          <div class="binder-pagination" id="binderPagination"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
+      <ul class="footer-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="trades.html">Binders</a></li>
+        <li><a href="gallery.html">Events</a></li>
+        <li><a href="qa.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <p class="footer-copy">© 2026 Pawpaw Ko. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/binder-view.js"></script>
+</body>
+</html>

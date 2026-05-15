@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ — Pawpaw Ko</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="trades.html">Binders</a></li>
+          <li><a href="gallery.html">Events</a></li>
+          <li><a href="qa.html" class="active">FAQ</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+        <div class="nav-auth" id="navAuth">
+          <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
+          <div class="nav-profile-wrap">
+            <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-10 2.2-10 6.5V22h20v-1.5c0-4.3-5.6-6.5-10-6.5Z"/></svg>
+            </button>
+            <div class="nav-profile-dropdown" id="navProfileDropdown" role="menu">
+              <a href="account.html" class="nav-profile-menu-item" role="menuitem">Profile</a>
+              <a href="my-binders.html" class="nav-profile-menu-item" role="menuitem">My Binders</a>
+              <div class="nav-profile-divider"></div>
+              <button class="nav-profile-menu-item" id="navProfileSignOut" role="menuitem">Log Out</button>
+            </div>
+          </div>
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <nav class="nav-mobile" id="navMobile">
+    <button class="nav-close" id="navClose">✕</button>
+    <a href="index.html">Home</a>
+    <a href="trades.html">Binders</a>
+    <a href="gallery.html">Events</a>
+    <a href="qa.html">FAQ</a>
+    <a href="contact.html">Contact</a>
+    <a href="account.html" id="mobileAuthLink">Account</a>
+  </nav>
+
+  <section class="section" style="padding-top: 8rem;">
+    <div class="container">
+      <div style="max-width: 720px; margin: 0 auto;">
+
+        <span class="eyebrow">General</span>
+        <div class="divider mt-2 mb-3"></div>
+
+        <details class="qa-item">
+          <summary>What is Pawpaw Ko?</summary>
+          <p>Pawpaw Ko is a community-first pop-up gaming company that runs trading card game and board game events at local businesses and community centers across NYC. We also host a Trades hub so players can find local trade partners.</p>
+        </details>
+
+        <details class="qa-item">
+          <summary>Do I need an account to browse binders?</summary>
+          <p>No. Anyone can browse public binders without signing in. You'll need an account only to build your own binder, list cards, or contact other traders.</p>
+        </details>
+
+        <span class="eyebrow" style="margin-top: 3rem; display: inline-block;">Trades</span>
+        <div class="divider mt-2 mb-3"></div>
+
+        <details class="qa-item">
+          <summary>How do trades actually happen?</summary>
+          <p>Trades are coordinated out-of-band. Each binder lists the owner's Discord handle — message them to set up a meet at a local shop, event, or wherever's convenient. We don't handle payment or shipping.</p>
+        </details>
+
+        <details class="qa-item">
+          <summary>What do the labels mean — trade, sell, free, combo?</summary>
+          <p><strong>Trade:</strong> open to swapping for other cards. <strong>Sell:</strong> looking for cash (Venmo or in-person, your call). <strong>Free:</strong> giving it away. <strong>Combo:</strong> bundled with other cards as a set.</p>
+        </details>
+
+        <details class="qa-item">
+          <summary>Can I have more than one binder?</summary>
+          <p>Yes — create as many as you'd like from <a href="my-binders.html">My Binders</a>.</p>
+        </details>
+
+        <span class="eyebrow" style="margin-top: 3rem; display: inline-block;">Events</span>
+        <div class="divider mt-2 mb-3"></div>
+
+        <details class="qa-item">
+          <summary>Where are events held?</summary>
+          <p>At rotating local partners — cafés, community centers, and shops across the five boroughs. Check the <a href="gallery.html">Events</a> page for upcoming dates and locations.</p>
+        </details>
+
+        <details class="qa-item">
+          <summary>Do I need to bring my own cards?</summary>
+          <p>For TCG events, yes — bring your deck. For board game nights and intro events, we provide everything.</p>
+        </details>
+
+        <div class="divider mt-2 mb-3" style="margin-top: 3rem;"></div>
+        <p style="text-align: center;">
+          Don't see your question? <a href="contact.html">Get in touch</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
+      <ul class="footer-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="trades.html">Binders</a></li>
+        <li><a href="gallery.html">Events</a></li>
+        <li><a href="qa.html">FAQ</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <div class="footer-socials">
+        <a href="https://www.instagram.com/pawpaw_plays/" target="_blank" class="footer-social" aria-label="Instagram">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7.75 2h8.5A5.75 5.75 0 0 1 22 7.75v8.5A5.75 5.75 0 0 1 16.25 22h-8.5A5.75 5.75 0 0 1 2 16.25v-8.5A5.75 5.75 0 0 1 7.75 2Zm0 1.5A4.25 4.25 0 0 0 3.5 7.75v8.5A4.25 4.25 0 0 0 7.75 20.5h8.5A4.25 4.25 0 0 0 20.5 16.25v-8.5A4.25 4.25 0 0 0 16.25 3.5ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 1.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm5.25-2.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg>
+        </a>
+        <a href="https://www.youtube.com/@pawpaw_plays" target="_blank" class="footer-social" aria-label="YouTube">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z"/></svg>
+        </a>
+      </div>
+      <p class="footer-copy">© 2026 Pawpaw Ko. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <style>
+    .qa-item {
+      margin-bottom: 1rem;
+      padding: 1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .qa-item summary {
+      cursor: pointer;
+      font-family: var(--font-serif);
+      font-weight: 500;
+      color: var(--text-primary);
+      list-style: none;
+      position: relative;
+      padding-right: 1.5rem;
+    }
+    .qa-item summary::-webkit-details-marker { display: none; }
+    .qa-item summary::after {
+      content: '+';
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.3rem;
+      color: var(--accent);
+      transition: transform 0.2s;
+    }
+    .qa-item[open] summary::after { content: '−'; }
+    .qa-item p { margin: 0.75rem 0 0; line-height: 1.6; }
+    .qa-item p a { color: var(--accent); }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

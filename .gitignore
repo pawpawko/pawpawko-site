@@ -1,0 +1,36 @@
+# Secrets — service_role key, R2 keys, etc.
+scripts/.env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Temp / scratch
+.tmp/
+*.bak
+*.swp
+*.tmp
+*~
+
+# Python
+scripts/__pycache__/
+scripts/*.pyc
+scripts/venv/
+scripts/.venv/
+
+# Node (defensive — not used yet)
+node_modules/
+
+# Logs
+*.log
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
