@@ -39,42 +39,6 @@ document.querySelectorAll('.nav-links a').forEach(link => {
   }
 });
 
-// ---- Novel Password Gate ----
-// To change the password, edit the value below:
-const NOVEL_PASSWORD = 'pawpaw';
-
-const passwordGate = document.getElementById('passwordGate');
-const novelContent = document.getElementById('novelContent');
-const passwordForm = document.getElementById('passwordForm');
-const passwordInput = document.getElementById('passwordInput');
-const passwordError = document.getElementById('passwordError');
-
-if (passwordForm) {
-  // Stay unlocked for the session
-  if (sessionStorage.getItem('novelUnlocked') === 'true') {
-    unlockNovel();
-  }
-
-  passwordForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (passwordInput.value.trim() === NOVEL_PASSWORD) {
-      sessionStorage.setItem('novelUnlocked', 'true');
-      unlockNovel();
-    } else {
-      passwordError.classList.add('show');
-      passwordInput.value = '';
-      passwordInput.focus();
-      setTimeout(() => passwordError.classList.remove('show'), 3000);
-    }
-  });
-}
-
-function unlockNovel() {
-  if (passwordGate) passwordGate.style.display = 'none';
-  novelContent?.classList.add('unlocked');
-}
-
-
 // ---- Scroll fade-in animation ----
 const observer = new IntersectionObserver((entries) => {
   entries.forEach(entry => {

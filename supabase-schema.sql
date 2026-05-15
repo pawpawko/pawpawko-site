@@ -378,3 +378,92 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ============================================================
+-- SECURITY HARDENING (2026-05-15)
+-- Idempotent: safe to re-run.
+-- ============================================================
+
+-- ---------- Storage: lock down binder-customs bucket ----------
+-- Restrict uploads to image types only and cap size at 5 MiB so the
+-- public bucket can't be used to host arbitrary content or SVG/JS.
+update storage.buckets
+   set allowed_mime_types = array['image/jpeg','image/png','image/webp','image/gif'],
+       file_size_limit    = 5242880
+ where id = 'binder-customs';
+
+-- ---------- URL validation on user-controllable image columns ----------
+-- RLS lets authenticated users write any string into these columns.
+-- Constrain them to NULL or a URL from our own Supabase storage public
+-- endpoint, so direct API writes can't smuggle tracking pixels or
+-- malicious external URLs into public binder views.
+--
+-- Constraints are added NOT VALID so this migration applies even if
+-- legacy rows would fail the check. After cleaning up any violators
+-- (see the validate block at the bottom), re-run a `validate constraint`
+-- statement to mark each constraint as enforced for past data too.
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'binders_sleeve_image_url_check') then
+    alter table public.binders
+      add constraint binders_sleeve_image_url_check
+      check (
+        sleeve_image_url is null
+        or sleeve_image_url like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+      ) not valid;
+  end if;
+end $$;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'binders_background_url_check') then
+    alter table public.binders
+      add constraint binders_background_url_check
+      check (
+        binder_background_url is null
+        or binder_background_url like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+      ) not valid;
+  end if;
+end $$;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_sleeve_image_url_check') then
+    alter table public.profiles
+      add constraint profiles_sleeve_image_url_check
+      check (
+        sleeve_image_url is null
+        or sleeve_image_url like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+      ) not valid;
+  end if;
+end $$;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_binder_background_url_check') then
+    alter table public.profiles
+      add constraint profiles_binder_background_url_check
+      check (
+        binder_background_url is null
+        or binder_background_url like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+      ) not valid;
+  end if;
+end $$;
+
+-- After confirming legacy rows comply (see audit query below), run:
+--
+--   alter table public.binders  validate constraint binders_sleeve_image_url_check;
+--   alter table public.binders  validate constraint binders_background_url_check;
+--   alter table public.profiles validate constraint profiles_sleeve_image_url_check;
+--   alter table public.profiles validate constraint profiles_binder_background_url_check;
+--
+-- Audit query to find rows that would violate the constraints:
+--
+--   select 'binders.sleeve' as col, id::text as row_id, sleeve_image_url as url from public.binders
+--     where sleeve_image_url is not null and sleeve_image_url not like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+--   union all
+--   select 'binders.bg', id::text, binder_background_url from public.binders
+--     where binder_background_url is not null and binder_background_url not like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+--   union all
+--   select 'profiles.sleeve', user_id::text, sleeve_image_url from public.profiles
+--     where sleeve_image_url is not null and sleeve_image_url not like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%'
+--   union all
+--   select 'profiles.bg', user_id::text, binder_background_url from public.profiles
+--     where binder_background_url is not null and binder_background_url not like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%';
