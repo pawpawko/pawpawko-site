@@ -81,8 +81,12 @@
 
         <form id="signupForm" class="auth-form" style="display:none;">
           <div class="form-group">
-            <label class="form-label" for="signupName">Display Name</label>
-            <input class="form-input" type="text" id="signupName" required>
+            <label class="form-label" for="signupName">Display Name <span class="required-mark" aria-hidden="true">*</span></label>
+            <div class="name-check-row">
+              <input class="form-input" type="text" id="signupName" required aria-required="true">
+              <button type="button" class="btn name-check-btn" data-name-check="signupName" data-status="signupNameStatus">Check</button>
+            </div>
+            <p class="form-hint name-check-status" id="signupNameStatus" aria-live="polite"></p>
           </div>
           <div class="form-group">
             <label class="form-label" for="signupEmail">Email</label>
@@ -118,6 +122,9 @@
 
       <!-- LOGGED IN -->
       <div id="dashboardPanel" style="display:none;">
+        <div id="setupRequiredNotice" class="notice notice-warn" style="display:none;">
+          Please set a unique display name to continue using Pawpaw Ko. You won't be able to browse the rest of the site until your profile is saved.
+        </div>
         <div class="dashboard-header">
           <div>
             <h2 id="welcomeName">Welcome back</h2>
@@ -130,20 +137,32 @@
         <h3 class="mb-3">Profile</h3>
         <form id="profileForm" class="profile-form">
           <div class="form-group">
-            <label class="form-label" for="pfName">Display Name</label>
-            <input class="form-input" type="text" id="pfName" required>
-            <p class="form-hint">Tip: use your Bandai nickname so other players recognize you.</p>
+            <label class="form-label" for="pfName">Display Name <span class="required-mark" aria-hidden="true">*</span></label>
+            <div class="name-check-row">
+              <input class="form-input" type="text" id="pfName" required aria-required="true">
+              <button type="button" class="btn name-check-btn" data-name-check="pfName" data-status="pfNameStatus">Check</button>
+            </div>
+            <p class="form-hint">
+              Tip: use your local nickname so other players recognize you. Changes are limited to once every 90 days.
+              <span class="name-lock-msg" id="pfNameLock" style="display:none;"></span>
+            </p>
+            <p class="form-hint name-check-status" id="pfNameStatus" aria-live="polite"></p>
           </div>
           <div class="form-group">
             <label class="form-label" for="pfDiscord">Discord Handle</label>
             <input class="form-input" type="text" id="pfDiscord" placeholder="yourname#0000 or @yourname">
           </div>
-          <p class="form-hint" style="margin-bottom: 0.5rem;">Binder names, sleeve images, and per-binder settings live on <a href="my-binders.html">My Binders</a>.</p>
           <div class="form-group">
+            <label class="form-label" for="pfCity">City</label>
+            <select class="form-input" id="pfCity"></select>
+            <p class="form-hint">Used to pre-fill the binder search filters when you sign in.</p>
+          </div>
+          <div class="form-group" id="pfBoroughGroup">
             <label class="form-label">Preferred Boroughs</label>
             <div class="filter-pills" id="pfBoroughPills"></div>
+            <p class="form-hint" id="pfBoroughHint" style="display:none;">Pick a city first.</p>
           </div>
-          <div class="form-group">
+          <div class="form-group" id="pfSubwayGroup">
             <label class="form-label">Subway Stops</label>
             <div class="pill-dropdown">
               <button type="button" class="form-input pill-dropdown-btn" id="pfSubwayBtn" aria-expanded="false">

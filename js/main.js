@@ -106,6 +106,31 @@ function wireProfileDropdown() {
 wireProfileDropdown();
 renderAuthButton();
 
+// ---- Profile-setup gate ----
+// Signed-in users who haven't confirmed a display name (display_name_set
+// is false) are pinned to account.html. The handle_new_user trigger
+// pre-fills display_name from the email prefix, so we can't gate on the
+// column being empty — we gate on the explicit flag the profile form
+// flips to true on save. The gate is a no-op on account.html itself.
+(async function enforceProfileSetup() {
+  if (!window.PK || !window.SB_READY) return;
+  const page = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
+  if (page === 'account.html') return;
+  let user = null;
+  try { user = await window.PK.currentUser(); } catch (e) {}
+  if (!user) return;
+  const { data, error } = await window.sb
+    .from('profiles')
+    .select('display_name_set')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (error) return;
+  if (data && data.display_name_set === true) return;
+  // The setup-required banner inside the dashboard panel on account.html
+  // surfaces the message; no need to pass anything through sessionStorage.
+  window.location.replace('account.html');
+})();
+
 (function wireBuildBindersBtn() {
   const btn = document.getElementById('buildBindersBtn');
   if (!btn) return;

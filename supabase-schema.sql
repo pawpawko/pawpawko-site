@@ -118,7 +118,18 @@ create table if not exists public.listings (
   created_at   timestamptz default now()
 );
 
-create index if not exists listings_user_id_idx   on public.listings(user_id);
+-- Legacy listings.user_id index — only meaningful while the column
+-- exists. The multi-binder migration further down drops the column;
+-- guarding this avoids "column user_id does not exist" on re-runs.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'listings' and column_name = 'user_id'
+  ) then
+    execute 'create index if not exists listings_user_id_idx on public.listings(user_id)';
+  end if;
+end $$;
 create index if not exists listings_card_code_idx on public.listings(card_code);
 
 -- ---------- ROW LEVEL SECURITY ----------
@@ -139,15 +150,30 @@ create policy "profiles_update" on public.profiles for update using (auth.uid() 
 drop policy if exists "cards_read" on public.cards;
 create policy "cards_read" on public.cards for select using (true);
 
--- listings: only AUTHENTICATED users can read raw rows; owner writes
-drop policy if exists "listings_read"   on public.listings;
-drop policy if exists "listings_insert" on public.listings;
-drop policy if exists "listings_update" on public.listings;
-drop policy if exists "listings_delete" on public.listings;
-create policy "listings_read"   on public.listings for select using (auth.role() = 'authenticated');
-create policy "listings_insert" on public.listings for insert with check (auth.uid() = user_id);
-create policy "listings_update" on public.listings for update using (auth.uid() = user_id);
-create policy "listings_delete" on public.listings for delete using (auth.uid() = user_id);
+-- listings: only AUTHENTICATED users can read raw rows; owner writes.
+-- The owner-write policies below reference `user_id`, which the
+-- multi-binder migration further down drops and replaces with
+-- binder-scoped policies. On a re-run those statements would fail
+-- ("column user_id does not exist"), so they're guarded to run only
+-- while the legacy column is still present. The binder-scoped policies
+-- are (re)created later in the multi-binder section.
+drop policy if exists "listings_read" on public.listings;
+create policy "listings_read" on public.listings for select using (auth.role() = 'authenticated');
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'listings' and column_name = 'user_id'
+  ) then
+    execute 'drop policy if exists "listings_insert" on public.listings';
+    execute 'drop policy if exists "listings_update" on public.listings';
+    execute 'drop policy if exists "listings_delete" on public.listings';
+    execute 'create policy "listings_insert" on public.listings for insert with check (auth.uid() = user_id)';
+    execute 'create policy "listings_update" on public.listings for update using (auth.uid() = user_id)';
+    execute 'create policy "listings_delete" on public.listings for delete using (auth.uid() = user_id)';
+  end if;
+end $$;
 
 -- (Older per-user RPCs removed — multi-binder versions defined further below.)
 
@@ -170,6 +196,178 @@ create unique index if not exists profiles_slug_unique on public.profiles(slug);
 
 -- Case-insensitive unique display name across all users.
 create unique index if not exists profiles_display_name_unique on public.profiles(lower(display_name));
+
+-- Track when display_name was last changed; used to enforce the 90-day
+-- cooldown between renames. Defaults to now() for fresh rows; backfill
+-- existing rows to now() so the first-change clock starts when this
+-- migration runs.
+alter table public.profiles
+  add column if not exists display_name_changed_at timestamptz not null default now();
+
+-- Enforce the 90-day cooldown on display_name changes at the DB level
+-- (so a bypassed client can't sidestep it). On an actual name change,
+-- raise if it's been less than 90 days; otherwise stamp the change time.
+create or replace function public.profiles_enforce_name_cooldown()
+returns trigger language plpgsql as $$
+begin
+  if new.display_name is distinct from old.display_name then
+    if old.display_name_changed_at is not null
+       and now() - old.display_name_changed_at < interval '90 days' then
+      raise exception 'display_name can only be changed once every 90 days (next change allowed at %)',
+        old.display_name_changed_at + interval '90 days'
+        using errcode = 'check_violation';
+    end if;
+    new.display_name_changed_at := now();
+  else
+    new.display_name_changed_at := old.display_name_changed_at;
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists profiles_name_cooldown on public.profiles;
+create trigger profiles_name_cooldown
+  before update on public.profiles
+  for each row execute procedure public.profiles_enforce_name_cooldown();
+
+-- Flag indicating the user has confirmed their display name (saved the
+-- profile form at least once). New rows start `false` — the signup
+-- trigger pre-fills `display_name` from the email prefix, so a non-null
+-- value alone doesn't prove the user picked a real name. The site-wide
+-- gate (see js/main.js) blocks navigation until this flips to `true`.
+-- The DO-block backfill runs only when the column is first added, so
+-- existing accounts aren't relocked when the schema is re-applied.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name = 'display_name_set'
+  ) then
+    alter table public.profiles add column display_name_set boolean not null default false;
+    update public.profiles set display_name_set = true;
+  end if;
+end $$;
+
+-- Availability check for the display-name field. Returns true if no other
+-- user currently owns the name (case-insensitive). The caller's own row
+-- is excluded so the profile editor doesn't flag the saved name as taken.
+-- SECURITY DEFINER so anon (the signup form) can call it without needing
+-- read access to public.profiles.
+create or replace function public.display_name_available(p_name text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select not exists (
+    select 1
+    from public.profiles
+    where lower(display_name) = lower(trim(p_name))
+      and user_id <> coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid)
+  );
+$$;
+grant execute on function public.display_name_available(text) to anon, authenticated;
+
+-- ---------- DISPLAY-NAME CONTENT MODERATION ----------
+-- Block slurs, racial epithets, and other clearly offensive terms from
+-- display names. Implemented as a substring match against the
+-- `banned_words` table after normalizing the candidate name (lowercase,
+-- common leet substitutions, strip everything except letters) so users
+-- can't bypass with spaces, punctuation, or simple character swaps.
+--
+-- The banned-words list is data, not code — extend it with
+-- `insert into public.banned_words (word) values ('something');` from
+-- the SQL editor (uses the service role, bypassing RLS).
+-- A maintained starter list is available at
+--   https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words
+-- which can be imported directly.
+
+create table if not exists public.banned_words (
+  word text primary key   -- store in the same normalized form (lowercase letters only)
+);
+alter table public.banned_words enable row level security;
+-- No SELECT/INSERT/UPDATE/DELETE policies for anon or authenticated:
+-- the table is only writable/readable by the service role. The
+-- moderation functions below are SECURITY DEFINER so the public-facing
+-- pre-check still works.
+
+-- Normalize a string for content matching. Lowercases, substitutes
+-- common leet characters for the letters they imitate, then strips
+-- everything but a–z. "@$$h0le" → "asshole", "n  i g  g 3 r" → "nigger".
+create or replace function public.normalize_for_moderation(s text)
+returns text
+language sql immutable as $$
+  select regexp_replace(
+    translate(
+      lower(coalesce(s, '')),
+      '@$013457!|',
+      'asoieastii'
+    ),
+    '[^a-z]+', '', 'g'
+  );
+$$;
+
+-- True if any banned word appears as a substring of the normalized
+-- input. STABLE since it reads banned_words.
+create or replace function public.contains_banned_word(p_text text)
+returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare
+  normalized text := public.normalize_for_moderation(p_text);
+begin
+  if normalized = '' then return false; end if;
+  return exists (
+    select 1 from public.banned_words
+    where word <> '' and position(word in normalized) > 0
+  );
+end; $$;
+
+-- Public pre-check used by the signup form and profile editor. Returns
+-- true when the name is acceptable.
+create or replace function public.display_name_acceptable(p_name text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select not public.contains_banned_word(p_name);
+$$;
+grant execute on function public.display_name_acceptable(text) to anon, authenticated;
+
+-- Server-side enforcement: reject inserts/updates whose display_name
+-- contains a banned word. Belt and braces with the client pre-check —
+-- a bypassed client still can't sneak a slur into the table.
+create or replace function public.profiles_validate_display_name()
+returns trigger language plpgsql as $$
+begin
+  if new.display_name is not null
+     and (tg_op = 'INSERT' or new.display_name is distinct from old.display_name)
+     and public.contains_banned_word(new.display_name) then
+    raise exception 'display_name contains disallowed words'
+      using errcode = 'check_violation',
+            hint = 'Please choose a different display name.';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists profiles_validate_display_name on public.profiles;
+create trigger profiles_validate_display_name
+  before insert or update on public.profiles
+  for each row execute procedure public.profiles_validate_display_name();
+
+-- Starter seed. Idempotent; expand by inserting more rows. Words must be
+-- already normalized (lowercase letters only — no spaces, numbers, or
+-- punctuation), since matching happens against the normalized form of
+-- the candidate name. To import the LDNOOBW list, run the project's
+-- `scripts/import_banned_words.py` (or COPY directly from the source
+-- text file after stripping non-letters).
+insert into public.banned_words (word) values
+  ('nigger'), ('nigga'),
+  ('faggot'), ('fag'),
+  ('retard'), ('retarded'),
+  ('tranny'),
+  ('chink'), ('gook'),
+  ('spic'), ('wetback'),
+  ('kike'),
+  ('coon'),
+  ('beaner'),
+  ('cracker'),
+  ('cunt')
+on conflict (word) do nothing;
 
 -- (Earlier get_binder_by_slug RPC removed — superseded by multi-binder design.)
 

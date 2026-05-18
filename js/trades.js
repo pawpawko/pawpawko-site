@@ -128,16 +128,24 @@
   let currentCategory = 'optcg';
   const selectedCategoryTab = () => currentCategory || null;
 
-  const cityDD = buildPillDropdown({
-    values:    window.CITIES || [],
-    pillsEl:   document.getElementById('cityPills'),
-    btnEl:     document.getElementById('cityBtn'),
-    panelEl:   document.getElementById('cityPanel'),
-    labelEl:   document.getElementById('cityLabel'),
-    defaultLabel: 'Any',
-    singleSelect: true,
-    onChange:  refreshBoroughDropdown,
-  });
+  // City is a native <select> (single-select, always-visible options A→Z).
+  // Exposes the same {selected, reset, setSelected} surface as the pill
+  // dropdowns so the rest of the file is unchanged.
+  const cityDD = (function buildCitySelect() {
+    const selectEl = document.getElementById('citySelect');
+    const items = [...(window.CITIES || [])]
+      .sort((a, b) => a.label.localeCompare(b.label));
+    selectEl.innerHTML =
+      '<option value="">Any</option>' +
+      items.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+    selectEl.addEventListener('change', () => refreshBoroughDropdown(api.selected()));
+    const api = {
+      selected: () => selectEl.value ? [selectEl.value] : [],
+      reset:    () => { selectEl.value = ''; },
+      setSelected: (values) => { selectEl.value = (values && values[0]) || ''; },
+    };
+    return api;
+  })();
   // Borough and subway start empty — they only populate once the user
   // picks the upstream filter (city for borough; borough for subway).
   const boroughDD = buildPillDropdown({

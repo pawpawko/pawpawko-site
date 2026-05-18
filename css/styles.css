@@ -1471,6 +1471,16 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .profile-form { max-width: 600px; }
 
+.name-check-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.name-check-row .form-input { flex: 1; min-width: 0; }
+.name-check-btn { flex: 0 0 auto; white-space: nowrap; }
+.name-check-status { margin-top: 0.35rem; min-height: 1.1em; }
+.name-check-status.is-ok   { color: var(--color-success, #2e7d32); }
+.name-check-status.is-bad  { color: var(--color-danger, #c62828); }
+.name-check-status.is-busy { opacity: 0.7; }
+.name-lock-msg { color: var(--color-muted, #6b6b6b); font-style: italic; margin-top: 0.25rem; }
+.required-mark { color: var(--color-danger, #c62828); margin-left: 0.15rem; }
+
 .dashboard-header {
   display: flex;
   justify-content: space-between;
