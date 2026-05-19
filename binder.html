@@ -120,37 +120,37 @@
             <label class="form-label" for="cbSeries">Set</label>
             <select class="form-input" id="cbSeries"><option value="">All</option></select>
           </div>
-          <div class="filter-group">
+          <div class="filter-group" data-game-filter="optcg">
             <label class="form-label" for="cbColor">Color</label>
             <select class="form-input" id="cbColor"><option value="">All</option></select>
           </div>
           <div class="filter-group">
             <label class="form-label" for="cbType">Type</label>
-            <select class="form-input" id="cbType">
-              <option value="">All</option>
-              <option>LEADER</option><option>CHARACTER</option>
-              <option>EVENT</option><option>STAGE</option>
-            </select>
+            <select class="form-input" id="cbType"><option value="">All</option></select>
           </div>
-          <div class="filter-group">
+          <div class="filter-group" data-game-filter="optcg">
             <label class="form-label" for="cbCost">Cost</label>
             <select class="form-input" id="cbCost"><option value="">Any</option></select>
           </div>
-          <div class="filter-group">
+          <div class="filter-group" data-game-filter="optcg">
             <label class="form-label" for="cbAttribute">Attribute</label>
-            <select class="form-input" id="cbAttribute">
-              <option value="">Any</option>
-              <option>Slash</option><option>Strike</option><option>Special</option>
-              <option>Wisdom</option><option>Ranged</option>
-            </select>
+            <select class="form-input" id="cbAttribute"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="pokemon">
+            <label class="form-label" for="cbSupertype">Supertype</label>
+            <select class="form-input" id="cbSupertype"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="pokemon">
+            <label class="form-label" for="cbSubtype">Subtype</label>
+            <select class="form-input" id="cbSubtype"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="pokemon">
+            <label class="form-label" for="cbHp">HP ≥</label>
+            <select class="form-input" id="cbHp"><option value="">Any</option></select>
           </div>
           <div class="filter-group">
             <label class="form-label" for="cbRarity">Rarity</label>
-            <select class="form-input" id="cbRarity">
-              <option value="">Any</option>
-              <option>L</option><option>C</option><option>UC</option>
-              <option>R</option><option>SR</option><option>SEC</option>
-            </select>
+            <select class="form-input" id="cbRarity"><option value="">Any</option></select>
           </div>
           <button class="btn" id="cbClear">Clear filters</button>
         </div>
@@ -206,8 +206,11 @@
                 <option value="custom-4x3">Custom (4x3)</option>
                 <option value="custom-3x3">Custom (3x3)</option>
                 <option value="release">Release order</option>
-                <option value="color">Color</option>
-                <option value="cost">Cost</option>
+                <option value="color"     data-game-opt="optcg">Color</option>
+                <option value="cost"      data-game-opt="optcg">Cost</option>
+                <option value="ptype"     data-game-opt="pokemon">Type</option>
+                <option value="hp"        data-game-opt="pokemon">HP</option>
+                <option value="supertype" data-game-opt="pokemon">Supertype</option>
               </select>
             </h3>
             <label class="checkbox-item filter-pill" id="excludeBinderToggle">

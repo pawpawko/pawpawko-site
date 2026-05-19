@@ -711,3 +711,94 @@ end $$;
 --   union all
 --   select 'profiles.bg', user_id::text, binder_background_url from public.profiles
 --     where binder_background_url is not null and binder_background_url not like 'https://cligjmfhxvazjarbvexp.supabase.co/storage/v1/object/public/binder-customs/%';
+
+-- ============================================================
+-- MULTI-GAME CARDS MIGRATION (2026-05-18)
+-- Adds Pokémon TCG alongside OPTCG in the shared `cards` table.
+-- Idempotent: safe to re-run after the first migration.
+-- ============================================================
+
+-- 1) Game discriminator. Defaults to 'optcg' so existing rows backfill
+--    cleanly. Check constraint allowlists the two games we ship; expand
+--    by editing the constraint when adding a third TCG.
+alter table public.cards add column if not exists game text not null default 'optcg';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'cards_game_check') then
+    alter table public.cards add constraint cards_game_check check (game in ('optcg','pokemon'));
+  end if;
+end $$;
+
+-- 2) Replace the single-column primary key on card_code with a composite
+--    (game, card_code) PK. pokemontcg.io IDs (e.g. 'sv1-1') don't clash
+--    with OPTCG codes ('OP01-001') today, but a composite PK is the
+--    durable answer once we add more games.
+--
+--    The `listings.card_code` FK has to go before we touch the PK, since
+--    it references the column being unkeyed. We don't re-add it because
+--    listings' game is derivable from binder.category — adding a `game`
+--    column here would denormalize binder.category onto every listing
+--    row for no real gain. App + RLS keep the relationship coherent.
+-- Drop the listings → cards FK if it still exists, regardless of name.
+-- Using a record-based FOR loop with the column-set check joined inline
+-- keeps every `any(c.conkey)` unambiguously in the array form.
+do $$
+declare r record;
+begin
+  for r in
+    select c.conname
+      from pg_constraint c
+      join pg_attribute  a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+     where c.conrelid = 'public.listings'::regclass
+       and c.contype  = 'f'
+     group by c.conname
+    having array_agg(a.attname order by a.attnum) = array['card_code']::name[]
+  loop
+    execute format('alter table public.listings drop constraint %I', r.conname);
+  end loop;
+end $$;
+
+-- Swap the cards primary key from (card_code) to (game, card_code).
+-- Only fires when the current PK is the single-column legacy one, so
+-- re-runs against an already-migrated table no-op.
+do $$
+declare r record;
+begin
+  for r in
+    select c.conname
+      from pg_constraint c
+      join pg_attribute  a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+     where c.conrelid = 'public.cards'::regclass
+       and c.contype  = 'p'
+     group by c.conname
+    having array_agg(a.attname order by a.attnum) = array['card_code']::name[]
+  loop
+    execute format('alter table public.cards drop constraint %I', r.conname);
+    execute 'alter table public.cards add primary key (game, card_code)';
+  end loop;
+end $$;
+
+-- 3) Pokémon-only columns. All nullable so OPTCG rows leave them blank.
+--    Stored as plain columns where the field is scalar; attacks/abilities
+--    go into JSONB so we don't have to model the nested shape rigidly.
+alter table public.cards add column if not exists hp           int;
+alter table public.cards add column if not exists types        text[];   -- e.g. {'Lightning','Metal'}
+alter table public.cards add column if not exists retreat_cost int;
+alter table public.cards add column if not exists weakness     text;     -- "Fighting x2"
+alter table public.cards add column if not exists resistance   text;     -- "Psychic -30"
+alter table public.cards add column if not exists evolves_from text;
+alter table public.cards add column if not exists supertype    text;     -- 'Pokémon' | 'Trainer' | 'Energy'
+alter table public.cards add column if not exists subtypes     text[];   -- e.g. {'Basic','ex'}
+alter table public.cards add column if not exists set_id       text;     -- pokemontcg.io set.id (e.g. 'sv1')
+alter table public.cards add column if not exists number       text;     -- card number within set ('001/198')
+alter table public.cards add column if not exists attacks      jsonb;    -- raw attacks array from API
+
+-- 4) Helpful indexes for the autocomplete query path
+--    (filtered by game, sorted by release_order desc, then card_code).
+create index if not exists cards_game_idx          on public.cards(game);
+create index if not exists cards_game_release_idx  on public.cards(game, release_order desc, card_code);
+
+-- 5) Search-binders RPC already pivots on binders.category, which maps
+--    1:1 to cards.game ('optcg' ↔ 'optcg', 'pokemon' ↔ 'pokemon'), so
+--    the existing p_category filter on search_binders is unchanged. The
+--    only client change is the card-autocomplete fetch in trades.js,
+--    which now filters cards by the active game (see that file).

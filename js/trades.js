@@ -121,11 +121,23 @@
   }
 
   // Category is implemented as tabs above the filter row, not as a dropdown.
-  // The active tab's data-category attribute is the canonical state. Default
-  // is OPTCG (matches the first tab marked `.active` in trades.html). Tab
-  // clicks fire loadBinders directly, so category works for anon users
-  // without needing the Apply button.
-  let currentCategory = 'optcg';
+  // The active tab's data-category attribute is the canonical state. The
+  // last-used game is persisted in localStorage so the choice survives
+  // refresh + page navigation. First visit defaults to OPTCG (matches
+  // the first tab marked `.active` in trades.html). Tab clicks fire
+  // loadBinders directly, so category works for anon users without
+  // needing the Apply button.
+  const LAST_GAME_KEY = 'pawpaw:lastGame';
+  function readLastGame() {
+    try {
+      const v = localStorage.getItem(LAST_GAME_KEY);
+      return v === 'pokemon' || v === 'optcg' ? v : 'optcg';
+    } catch (e) { return 'optcg'; }
+  }
+  function writeLastGame(g) {
+    try { localStorage.setItem(LAST_GAME_KEY, g); } catch (e) {}
+  }
+  let currentCategory = readLastGame();
   const selectedCategoryTab = () => currentCategory || null;
 
   // City is a native <select> (single-select, always-visible options A→Z).
@@ -229,7 +241,17 @@
 
   async function loadBinders() {
     countEl.textContent = 'Loading binders…';
+    // Replace the list with PAGE_SIZE invisible placeholders instead of
+    // clearing it outright — this keeps the container's height stable
+    // during the RPC round-trip so the footer / page bottom doesn't
+    // flicker on tab switches and filter applies.
     listEl.innerHTML = '';
+    for (let i = 0; i < PAGE_SIZE; i++) {
+      const ph = document.createElement('li');
+      ph.className = 'binder-row binder-row-placeholder';
+      ph.setAttribute('aria-hidden', 'true');
+      listEl.appendChild(ph);
+    }
     if (pageEl) pageEl.innerHTML = '';
 
     // Category is the only filter anon users can apply. Everything else
@@ -267,6 +289,14 @@
     const total = allBinders.length;
     if (total === 0) {
       countEl.textContent = 'No binders match those filters yet.';
+      // Keep the list area the same height as a populated page so
+      // empty-state transitions don't bounce the footer.
+      for (let i = 0; i < PAGE_SIZE; i++) {
+        const ph = document.createElement('li');
+        ph.className = 'binder-row binder-row-placeholder';
+        ph.setAttribute('aria-hidden', 'true');
+        listEl.appendChild(ph);
+      }
       return;
     }
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -390,18 +420,18 @@
   let activeSuggIndex = -1;
   let cardSuggBox, cardInput;
 
-  // Fetch all card codes for the active category. Currently the cards
-  // table has no per-game discriminator (all rows are OPTCG), so this
-  // fetch is the same regardless of tab. Wired through `category` for
-  // when a `cards.game` column is added.
+  // Fetch all card codes for the active category. cards.game is the
+  // discriminator (added in the multi-game migration); filter on it so
+  // OPTCG and Pokémon autocompletes don't pollute each other. Limit is
+  // bumped to 25k since the Pokémon catalog alone is ~17k.
   async function refreshCardSuggestionsSource(category) {
     if (!window.SB_READY) return;
-    // For now, ignore category server-side — all cards in DB are OPTCG.
     const { data, error } = await window.sb
       .from('cards')
       .select('card_code, name')
+      .eq('game', category)
       .order('card_code')
-      .limit(5000);
+      .limit(25000);
     if (error) { console.warn('[Pawpaw Ko] card suggestions fetch failed', error); cardCodesAll = []; return; }
     cardCodesAll = data || [];
   }
@@ -512,15 +542,28 @@
   }
 
   // Parse the comma-separated card-codes the user has typed.
-  // Returns an upper-cased, trimmed, de-duped list. Empty list when the
-  // input is empty or the user is anon.
+  // OPTCG codes are stored uppercase ('OP01-001'); Pokémon codes are
+  // stored lowercase ('sv1-1'). The cards.card_code column is matched
+  // case-sensitively by search_binders, so we have to preserve the
+  // active game's casing instead of blindly uppercasing.
   function parsedCardCodes() {
     const el = document.getElementById('filterCards');
     if (!el || !el.value) return [];
-    const codes = el.value.split(',')
-      .map(s => s.trim().toUpperCase())
-      .filter(Boolean);
+    const normalize = currentCategory === 'pokemon'
+      ? s => s.trim().toLowerCase()
+      : s => s.trim().toUpperCase();
+    const codes = el.value.split(',').map(normalize).filter(Boolean);
     return [...new Set(codes)];
+  }
+
+  // Swap the Cards-input placeholder + label based on the active tab so
+  // the example code matches the game the user is searching.
+  function updateCardInputPlaceholder() {
+    const el = document.getElementById('filterCards');
+    if (!el) return;
+    el.placeholder = currentCategory === 'pokemon'
+      ? 'sv1-1, sv3pt5-160, …'
+      : 'OP01-001, ST15-003, …';
   }
 
   // Pre-fill the city / borough / subway filters from a signed-in user's
@@ -559,6 +602,15 @@
     // doesn't require sign-in.
     const tabsEl = document.getElementById('categoryTabs');
     if (tabsEl) {
+      // Sync the visual tab state to the persisted category before the
+      // first render — the HTML always ships with the OPTCG tab marked
+      // active, so we have to flip it manually when restoring 'pokemon'.
+      tabsEl.querySelectorAll('.category-tab').forEach(t => {
+        const match = t.dataset.category === currentCategory;
+        t.classList.toggle('active', match);
+        t.setAttribute('aria-selected', match ? 'true' : 'false');
+      });
+
       tabsEl.addEventListener('click', async (e) => {
         const tab = e.target.closest('.category-tab');
         if (!tab || tab.classList.contains('active')) return;
@@ -569,6 +621,8 @@
         tab.classList.add('active');
         tab.setAttribute('aria-selected', 'true');
         currentCategory = tab.dataset.category || 'optcg';
+        writeLastGame(currentCategory);
+        updateCardInputPlaceholder();
         await refreshCardSuggestionsSource(currentCategory);
         loadBinders();
       });
@@ -576,6 +630,7 @@
 
     // Set up the card-search autocomplete once we know the user state.
     setupCardAutocomplete();
+    updateCardInputPlaceholder();
     await refreshCardSuggestionsSource(currentCategory);
 
     if (isLoggedInCached) {

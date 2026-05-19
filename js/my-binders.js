@@ -14,7 +14,28 @@
     document.getElementById('bindersWrap').style.display = '';
     loadBinders(user.id);
 
+    // Persistence helpers — share the same key as trades.js so the
+    // last-used game choice flows across pages.
+    const LAST_GAME_KEY = 'pawpaw:lastGame';
+    function readLastGame() {
+      try {
+        const v = localStorage.getItem(LAST_GAME_KEY);
+        return v === 'pokemon' || v === 'optcg' ? v : 'optcg';
+      } catch (e) { return 'optcg'; }
+    }
+    function writeLastGame(g) {
+      try { localStorage.setItem(LAST_GAME_KEY, g); } catch (e) {}
+    }
+    function setPill(groupId, value) {
+      document.querySelectorAll(`#${groupId} .pill-choice-btn`).forEach(b => {
+        b.classList.toggle('active', b.dataset.value === value);
+      });
+    }
+
     document.getElementById('newBinderBtn').addEventListener('click', () => {
+      // Default the category picker to whatever game the user last
+      // looked at or created — saves a click for repeat Pokémon users.
+      setPill('newBinderCategory', readLastGame());
       document.getElementById('newBinderForm').style.display = '';
       document.getElementById('newBinderName').focus();
     });
@@ -60,6 +81,9 @@
         }
         return;
       }
+      // Successful create — remember this category so the trades-page
+      // tabs and the next new-binder default both reflect the choice.
+      writeLastGame(category);
       document.getElementById('newBinderForm').style.display = 'none';
       document.getElementById('newBinderName').value = '';
       loadBinders(user.id);

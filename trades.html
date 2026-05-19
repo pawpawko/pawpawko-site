@@ -74,6 +74,11 @@
             <div class="card-suggestions" id="cardSuggestions" role="listbox" hidden></div>
           </div>
         </div>
+        <!-- Restore the last-used game synchronously while the body is
+             still parsing — must come AFTER both #categoryTabs and
+             #filterCards so we can touch them. The deferred trades.js
+             repeats both flips idempotently once it runs. -->
+        <script>(function(){try{var g=localStorage.getItem('pawpaw:lastGame');if(g!=='pokemon'&&g!=='optcg')return;var ts=document.getElementById('categoryTabs');if(ts){ts.querySelectorAll('.category-tab').forEach(function(t){var on=t.dataset.category===g;t.classList.toggle('active',on);t.setAttribute('aria-selected',on?'true':'false');});}var fc=document.getElementById('filterCards');if(fc)fc.placeholder=g==='pokemon'?'sv1-1, sv3pt5-160, …':'OP01-001, ST15-003, …';}catch(e){}})();</script>
         <div class="filter-group">
           <label class="form-label" for="citySelect">City</label>
           <select class="form-input" id="citySelect"></select>

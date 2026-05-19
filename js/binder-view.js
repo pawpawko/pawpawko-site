@@ -30,6 +30,28 @@
   let viewerUserId = null;
   let isOwner = false;
   let currentBinderId = null;     // the binder we're viewing
+  let binderCategory = 'optcg';   // 'optcg' | 'pokemon' — drives filter UI + card-browser query
+
+  // Game-specific option lists for the card-browser filters.
+  const OPTCG_COLORS     = ['Red', 'Blue', 'Green', 'Purple', 'Black', 'Yellow'];
+  const OPTCG_TYPES      = ['LEADER', 'CHARACTER', 'EVENT', 'STAGE'];
+  const OPTCG_ATTRIBUTES = ['Slash', 'Strike', 'Special', 'Wisdom', 'Ranged'];
+  const OPTCG_RARITIES   = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'P'];
+  const POKEMON_TYPES = [
+    'Grass','Fire','Water','Lightning','Psychic','Fighting',
+    'Darkness','Metal','Dragon','Colorless','Fairy'
+  ];
+  const POKEMON_SUPERTYPES = ['Pokémon', 'Trainer', 'Energy'];
+  const POKEMON_SUBTYPES = [
+    'Basic','Stage 1','Stage 2','V','VMAX','VSTAR','ex','EX','GX',
+    'BREAK','Mega','LEGEND','Tag Team','Radiant','Item','Tool','Stadium','Supporter'
+  ];
+  const POKEMON_RARITIES = [
+    'Common','Uncommon','Rare','Rare Holo','Rare Holo EX','Rare Holo GX','Rare Holo V','Rare Holo VMAX',
+    'Rare Ultra','Rare Secret','Rare Rainbow','Radiant Rare','Amazing Rare',
+    'Illustration Rare','Special Illustration Rare','Hyper Rare','Double Rare','Promo'
+  ];
+  const POKEMON_HP_BUCKETS = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300];
 
   async function init() {
     const me = await window.PK.currentUser();
@@ -78,6 +100,8 @@
     ownerUserId = binder.user_id;
     isOwner = isLoggedIn && viewerUserId === ownerUserId;
     sleeveImageUrl = binder.sleeve_image_url || null;
+    binderCategory = binder.category === 'pokemon' ? 'pokemon' : 'optcg';
+    applyGameUI(binderCategory);
     const profile = binder;  // alias for the rest of the function
 
     // 2. Render header
@@ -275,6 +299,30 @@
       currentListings = allListings.slice().sort((a, b) =>
         (a.cards?.cost ?? 99) - (b.cards?.cost ?? 99) ||
         String(a.card_code).localeCompare(b.card_code));
+    } else if (mode === 'ptype') {
+      // Pokémon elemental type. Sort by the first listed type, fall
+      // back alphabetical; ties broken by HP desc then card_code.
+      const rank = c => {
+        const t = (c?.cards?.types || [])[0];
+        const i = POKEMON_TYPES.indexOf(t);
+        return i < 0 ? 99 : i;
+      };
+      currentListings = allListings.slice().sort((a, b) =>
+        rank(a) - rank(b) ||
+        (b.cards?.hp || 0) - (a.cards?.hp || 0) ||
+        String(a.card_code).localeCompare(b.card_code));
+    } else if (mode === 'hp') {
+      currentListings = allListings.slice().sort((a, b) =>
+        (b.cards?.hp ?? -1) - (a.cards?.hp ?? -1) ||
+        String(a.card_code).localeCompare(b.card_code));
+    } else if (mode === 'supertype') {
+      const rank = c => {
+        const i = POKEMON_SUPERTYPES.indexOf(c?.cards?.supertype);
+        return i < 0 ? 99 : i;
+      };
+      currentListings = allListings.slice().sort((a, b) =>
+        rank(a) - rank(b) ||
+        String(a.card_code).localeCompare(b.card_code));
     }
     currentPage = 1;
     renderCurrentPage();
@@ -302,7 +350,8 @@
     if (sel) {
       sel.style.display = '';
       // Default the dropdown to whichever custom layout the binder currently uses.
-      if (aestheticsSortMode !== 'release' && aestheticsSortMode !== 'color' && aestheticsSortMode !== 'cost') {
+      const NON_CUSTOM_SORTS = ['release','color','cost','ptype','hp','supertype'];
+      if (!NON_CUSTOM_SORTS.includes(aestheticsSortMode)) {
         aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
       }
       sel.value = aestheticsSortMode;
@@ -465,7 +514,7 @@
 
   async function initSearchFilters() {
     await populateDropdowns();
-    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity'].forEach(id => {
+    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
       document.getElementById(id).addEventListener('change', filterBinderListings);
     });
     document.getElementById('cbName').addEventListener('input', () => {
@@ -473,7 +522,7 @@
       cbDebounceTimer = setTimeout(filterBinderListings, 250);
     });
     document.getElementById('cbClear').addEventListener('click', () => {
-      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity'].forEach(id => {
+      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
         document.getElementById(id).value = '';
       });
       filterBinderListings();
@@ -492,12 +541,46 @@
     wireAddListingModal();
   }
 
+  // Toggle filter groups and sort-options that are scoped to one game.
+  // Elements with data-game-filter / data-game-opt that don't match the
+  // current game are hidden so they neither render nor get read by the
+  // load/filter code paths (which check the input value, which stays '').
+  function applyGameUI(category) {
+    document.querySelectorAll('[data-game-filter]').forEach(el => {
+      el.style.display = el.dataset.gameFilter === category ? '' : 'none';
+    });
+    document.querySelectorAll('#aestheticsSort [data-game-opt]').forEach(opt => {
+      opt.hidden = opt.dataset.gameOpt !== category;
+    });
+    // Update the Search placeholder so the example card-code matches.
+    const searchInput = document.getElementById('cbName');
+    if (searchInput) {
+      searchInput.placeholder = category === 'pokemon'
+        ? 'Pikachu, sv1-1, …'
+        : 'Luffy, OP01-001, …';
+    }
+  }
+
+  function appendOptions(selectEl, values) {
+    if (!selectEl) return;
+    values.forEach(v => {
+      const o = document.createElement('option');
+      o.value = String(v);
+      o.textContent = String(v);
+      selectEl.appendChild(o);
+    });
+  }
+
   async function populateDropdowns() {
-    // Distinct series — page up to 10000 rows so we don't miss any
+    // Distinct series for the active game only — paginated up to 10k rows
+    // so very long catalogs (Pokémon ~17k) don't lose sets.
     const seriesSet = new Set();
     let from = 0, page = 1000;
-    while (from < 10000) {
-      const { data, error } = await window.sb.from('cards').select('series').range(from, from + page - 1);
+    while (from < 20000) {
+      const { data, error } = await window.sb
+        .from('cards').select('series')
+        .eq('game', binderCategory)
+        .range(from, from + page - 1);
       if (error || !data || data.length === 0) break;
       data.forEach(r => r.series && seriesSet.add(r.series));
       if (data.length < page) break;
@@ -509,25 +592,24 @@
       seriesSel.appendChild(o);
     });
 
-    // Colors — One Piece has a fixed palette; hardcoded for completeness
-    const COLORS = ['Red', 'Blue', 'Green', 'Purple', 'Black', 'Yellow'];
-    const colorSel = document.getElementById('cbColor');
-    COLORS.forEach(c => {
-      const o = document.createElement('option'); o.value = c; o.textContent = c;
-      colorSel.appendChild(o);
-    });
-
-    // Cost: 0 to 10
-    const costSel = document.getElementById('cbCost');
-    for (let i = 0; i <= 10; i++) {
-      const o = document.createElement('option'); o.value = String(i); o.textContent = String(i);
-      costSel.appendChild(o);
+    if (binderCategory === 'pokemon') {
+      appendOptions(document.getElementById('cbType'),      POKEMON_TYPES);
+      appendOptions(document.getElementById('cbSupertype'), POKEMON_SUPERTYPES);
+      appendOptions(document.getElementById('cbSubtype'),   POKEMON_SUBTYPES);
+      appendOptions(document.getElementById('cbHp'),        POKEMON_HP_BUCKETS);
+      appendOptions(document.getElementById('cbRarity'),    POKEMON_RARITIES);
+    } else {
+      appendOptions(document.getElementById('cbColor'),     OPTCG_COLORS);
+      appendOptions(document.getElementById('cbType'),      OPTCG_TYPES);
+      appendOptions(document.getElementById('cbCost'),      Array.from({ length: 11 }, (_, i) => i));
+      appendOptions(document.getElementById('cbAttribute'), OPTCG_ATTRIBUTES);
+      appendOptions(document.getElementById('cbRarity'),    OPTCG_RARITIES);
     }
   }
 
   function wireBrowserFilters() {
     const onChange = () => { loadCards(); filterBinderListings(); };
-    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity'].forEach(id => {
+    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
       document.getElementById(id).addEventListener('change', onChange);
     });
     document.getElementById('cbName').addEventListener('input', () => {
@@ -535,7 +617,7 @@
       cbDebounceTimer = setTimeout(onChange, 250);
     });
     document.getElementById('cbClear').addEventListener('click', () => {
-      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity'].forEach(id => {
+      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
         document.getElementById(id).value = '';
       });
       onChange();
@@ -546,25 +628,48 @@
   }
 
   async function loadCards() {
-    const name      = document.getElementById('cbName').value.trim();
-    const series    = document.getElementById('cbSeries').value;
-    const color     = document.getElementById('cbColor').value;
-    const ctype     = document.getElementById('cbType').value;
-    const cost      = document.getElementById('cbCost').value;
-    const attribute = document.getElementById('cbAttribute').value;
-    const rarity    = document.getElementById('cbRarity').value;
+    const name   = document.getElementById('cbName').value.trim();
+    const series = document.getElementById('cbSeries').value;
+    const ctype  = document.getElementById('cbType').value;
+    const rarity = document.getElementById('cbRarity').value;
 
-    let q = window.sb.from('cards').select('card_code, name, series, color, type, cost, attribute, rarity, image_url');
+    // Game-aware select list so Pokémon-only columns come back when
+    // we need them for client-side filtering / display.
+    const projection = binderCategory === 'pokemon'
+      ? 'card_code, name, series, type, types, supertype, subtypes, hp, rarity, image_url'
+      : 'card_code, name, series, color, type, cost, attribute, rarity, image_url';
+
+    let q = window.sb.from('cards')
+      .select(projection)
+      .eq('game', binderCategory);
+
     if (name) {
       const safe = name.replace(/[%,]/g, '');
       q = q.or(`name.ilike.%${safe}%,card_code.ilike.%${safe}%`);
     }
-    if (series)    q = q.eq('series', series);
-    if (color)     q = q.ilike('color', `%${color}%`);
-    if (ctype)     q = q.eq('type', ctype);
-    if (cost !== '') q = q.eq('cost', parseInt(cost, 10));
-    if (attribute) q = q.eq('attribute', attribute);
-    if (rarity)    q = q.eq('rarity', rarity);
+    if (series) q = q.eq('series', series);
+    if (rarity) q = q.eq('rarity', rarity);
+
+    if (binderCategory === 'pokemon') {
+      const supertype = document.getElementById('cbSupertype').value;
+      const subtype   = document.getElementById('cbSubtype').value;
+      const hpMin     = document.getElementById('cbHp').value;
+      // Pokémon `type` filter targets the `types` text[] column. Use
+      // `cs` (contains) so a card listed as ['Lightning'] matches the
+      // Lightning option.
+      if (ctype)     q = q.contains('types', [ctype]);
+      if (supertype) q = q.eq('supertype', supertype);
+      if (subtype)   q = q.contains('subtypes', [subtype]);
+      if (hpMin)     q = q.gte('hp', parseInt(hpMin, 10));
+    } else {
+      const color     = document.getElementById('cbColor').value;
+      const cost      = document.getElementById('cbCost').value;
+      const attribute = document.getElementById('cbAttribute').value;
+      if (color)        q = q.ilike('color', `%${color}%`);
+      if (ctype)        q = q.eq('type', ctype);
+      if (cost !== '')  q = q.eq('cost', parseInt(cost, 10));
+      if (attribute)    q = q.eq('attribute', attribute);
+    }
 
     const { data, error } = await q
       .order('release_order', { ascending: false })
@@ -714,28 +819,40 @@
     lastIsLoggedIn = isLoggedIn;
     const statusEl = document.getElementById('binderStatus');
 
+    // Two-query pattern for both paths: fetch listings (or call the
+    // public RPC), then look up matching cards by (game, card_code) and
+    // attach as a synthetic `cards` field per listing. Previously the
+    // authenticated path used PostgREST's embedded join (`cards(...)`),
+    // but the multi-game migration dropped the FK from listings →
+    // cards, so PostgREST's schema cache no longer resolves that.
     let listings, lerr;
+    let rawListings = null;
     if (isLoggedIn) {
-      ({ data: listings, error: lerr } = await window.sb
+      const res = await window.sb
         .from('listings')
-        .select('id, quantity, listing_type, notes, card_code, sort_order, created_at, cards(name, image_url, color, type, cost, attribute, rarity, series, release_order)')
+        .select('id, quantity, listing_type, notes, card_code, sort_order, created_at')
         .eq('binder_id', currentBinderId)
         .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false }));
+        .order('created_at', { ascending: false });
+      lerr = res.error;
+      rawListings = res.data;
     } else {
-      const { data: rawListings, error: rerr } = await window.sb.rpc('get_binder_listings_public', { p_binder_id: currentBinderId });
-      if (rerr) { lerr = rerr; }
-      else {
-        const codes = (rawListings || []).map(r => r.card_code);
-        let cardsByCode = {};
-        if (codes.length) {
-          const { data: cards } = await window.sb.from('cards')
-            .select('card_code, name, image_url, color, type, cost, attribute, rarity, series, release_order')
-            .in('card_code', codes);
-          (cards || []).forEach(c => { cardsByCode[c.card_code] = c; });
-        }
-        listings = (rawListings || []).map(r => ({ ...r, cards: cardsByCode[r.card_code] || {} }));
+      const { data, error } = await window.sb.rpc('get_binder_listings_public', { p_binder_id: currentBinderId });
+      lerr = error;
+      rawListings = data;
+    }
+
+    if (!lerr) {
+      const codes = (rawListings || []).map(r => r.card_code);
+      let cardsByCode = {};
+      if (codes.length) {
+        const { data: cards } = await window.sb.from('cards')
+          .select('card_code, name, image_url, color, type, cost, attribute, rarity, series, release_order, supertype, subtypes, types, hp')
+          .eq('game', binderCategory)
+          .in('card_code', codes);
+        (cards || []).forEach(c => { cardsByCode[c.card_code] = c; });
       }
+      listings = (rawListings || []).map(r => ({ ...r, cards: cardsByCode[r.card_code] || {} }));
     }
 
     if (lerr) {
@@ -906,13 +1023,19 @@
       return;
     }
 
-    const name      = document.getElementById('cbName').value.trim().toLowerCase();
-    const series    = document.getElementById('cbSeries').value;
+    const name   = document.getElementById('cbName').value.trim().toLowerCase();
+    const series = document.getElementById('cbSeries').value;
+    const ctype  = document.getElementById('cbType').value;
+    const rarity = document.getElementById('cbRarity').value;
+
+    // OPTCG-only filter values; hidden inputs read as ''
     const color     = document.getElementById('cbColor').value;
-    const ctype     = document.getElementById('cbType').value;
     const cost      = document.getElementById('cbCost').value;
     const attribute = document.getElementById('cbAttribute').value;
-    const rarity    = document.getElementById('cbRarity').value;
+    // Pokémon-only filter values; hidden inputs read as ''
+    const supertype = document.getElementById('cbSupertype').value;
+    const subtype   = document.getElementById('cbSubtype').value;
+    const hpMin     = document.getElementById('cbHp').value;
 
     const filtered = allListings.filter(l => {
       const c = l.cards || {};
@@ -921,11 +1044,20 @@
         if (!haystack.includes(name)) return false;
       }
       if (series && c.series !== series) return false;
-      if (color && !((c.color || '').includes(color))) return false;
-      if (ctype && c.type !== ctype) return false;
-      if (cost !== '' && c.cost !== undefined && c.cost !== parseInt(cost, 10)) return false;
-      if (attribute && c.attribute !== attribute) return false;
       if (rarity && c.rarity !== rarity) return false;
+
+      if (binderCategory === 'pokemon') {
+        // `type` here means elemental type, stored as text[] in `types`.
+        if (ctype && !(Array.isArray(c.types) && c.types.includes(ctype))) return false;
+        if (supertype && c.supertype !== supertype) return false;
+        if (subtype && !(Array.isArray(c.subtypes) && c.subtypes.includes(subtype))) return false;
+        if (hpMin && (c.hp == null || c.hp < parseInt(hpMin, 10))) return false;
+      } else {
+        if (color && !((c.color || '').includes(color))) return false;
+        if (ctype && c.type !== ctype) return false;
+        if (cost !== '' && c.cost !== undefined && c.cost !== parseInt(cost, 10)) return false;
+        if (attribute && c.attribute !== attribute) return false;
+      }
       return true;
     });
     renderListings(filtered);
