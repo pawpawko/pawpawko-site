@@ -653,6 +653,37 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- ---------- ON IDENTITY LINK: backfill discord_handle ----------
+-- When Supabase links a Discord identity to an existing user (because
+-- their verified email matched a prior account), no new auth.users row
+-- is created so handle_new_user doesn't fire. This trigger fills the
+-- profile's discord_handle from the new identity's metadata. We only
+-- write when discord_handle is currently NULL so any manual edit the
+-- user has made is preserved.
+create or replace function public.handle_new_identity()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.provider = 'discord' then
+    update public.profiles
+       set discord_handle = coalesce(
+         new.identity_data->>'user_name',
+         new.identity_data->>'preferred_username'
+       )
+     where user_id = new.user_id
+       and discord_handle is null
+       and coalesce(
+         new.identity_data->>'user_name',
+         new.identity_data->>'preferred_username'
+       ) is not null;
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists on_auth_identity_created on auth.identities;
+create trigger on_auth_identity_created
+  after insert on auth.identities
+  for each row execute procedure public.handle_new_identity();
+
 -- ============================================================
 -- SECURITY HARDENING (2026-05-15)
 -- Idempotent: safe to re-run.
