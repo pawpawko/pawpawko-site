@@ -615,9 +615,35 @@ grant execute on function public.search_binders(text[], text[], text, text, text
 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_provider       text := new.raw_app_meta_data->>'provider';
+  v_meta_name      text := new.raw_user_meta_data->>'display_name';
+  v_display_name   text;
+  v_discord_handle text;
 begin
-  insert into public.profiles (user_id, display_name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)));
+  -- Prefer an explicit display_name passed at signup (email/password form
+  -- writes it into user_metadata). Otherwise use a unique placeholder
+  -- tied to the user_id so the UI's empty-on-first-load behavior takes
+  -- over and the user is forced to pick a real name. We can't use the
+  -- email prefix as a fallback for OAuth signups — that's a worse default
+  -- and would let users accidentally confirm an auto-generated name.
+  v_display_name := coalesce(
+    v_meta_name,
+    'user-' || substring(new.id::text from 1 for 8)
+  );
+
+  -- Discord: prefill discord_handle from the OAuth username so the
+  -- profile form already shows it. Discord puts the handle in
+  -- raw_user_meta_data.user_name (and sometimes preferred_username).
+  if v_provider = 'discord' then
+    v_discord_handle := coalesce(
+      new.raw_user_meta_data->>'user_name',
+      new.raw_user_meta_data->>'preferred_username'
+    );
+  end if;
+
+  insert into public.profiles (user_id, display_name, discord_handle)
+  values (new.id, v_display_name, v_discord_handle);
   insert into public.binders (user_id, name) values (new.id, 'My Binder');
   return new;
 end; $$;

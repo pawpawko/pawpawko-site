@@ -14,8 +14,8 @@
   --accent-light: #ddb896;
   --accent-muted: #8a6448;
   --text-primary: #ede8df;
-  --text-secondary: #a89e94;
-  --text-muted: #6e6560;
+  --text-secondary: #c4b9ad;
+  --text-muted: #988e85;
   --border: rgba(255,255,255,0.08);
   --border-accent: rgba(201, 149, 106, 0.3);
   --radius: 4px;
@@ -1400,50 +1400,36 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-.btn-google {
+.btn-oauth {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: var(--parchment, #ede8df);
-  color: #181622;
+  padding: 0;
   border: 1px solid var(--border);
-  font-family: var(--font-serif);
-  font-size: 0.85rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
   cursor: pointer;
   transition: var(--transition);
 }
-.btn-google:hover { background: #fff; }
-.btn-google-icon { display: block; flex-shrink: 0; }
+.btn-oauth:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+.btn-oauth-icon { display: block; flex-shrink: 0; }
 
-.btn-discord {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: #5865F2;
-  color: #fff;
-  border: 1px solid #5865F2;
-  font-family: var(--font-serif);
-  font-size: 0.85rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: var(--transition);
-}
+.btn-google { background: var(--parchment, #ede8df); }
+.btn-google:hover { background: #fff; }
+
+.btn-discord { background: #5865F2; border-color: #5865F2; color: #fff; }
 .btn-discord:hover { background: #4752c4; border-color: #4752c4; }
-.btn-discord-icon { display: block; flex-shrink: 0; }
 
 .auth-oauth {
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+  flex-direction: row;
+  justify-content: center;
+  gap: 1rem;
+}
+.oauth-error {
+  text-align: center;
+  margin-top: 0.6rem;
 }
 
 .auth-divider {
