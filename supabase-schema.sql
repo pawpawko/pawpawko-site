@@ -211,7 +211,11 @@ create or replace function public.profiles_enforce_name_cooldown()
 returns trigger language plpgsql as $$
 begin
   if new.display_name is distinct from old.display_name then
-    if old.display_name_changed_at is not null
+    -- Skip the cooldown on first-time setup: the signup trigger pre-fills
+    -- display_name from the email prefix and stamps display_name_changed_at
+    -- to now(), so the user's first real save would otherwise be blocked.
+    if old.display_name_set is true
+       and old.display_name_changed_at is not null
        and now() - old.display_name_changed_at < interval '90 days' then
       raise exception 'display_name can only be changed once every 90 days (next change allowed at %)',
         old.display_name_changed_at + interval '90 days'
@@ -802,3 +806,414 @@ create index if not exists cards_game_release_idx  on public.cards(game, release
 --    the existing p_category filter on search_binders is unchanged. The
 --    only client change is the card-autocomplete fetch in trades.js,
 --    which now filters cards by the active game (see that file).
+
+-- ============================================================
+-- Slug resolution (pretty share links)
+-- Slug format: <owner-slug>-<binder-name-slug>-<first-8-hex-of-uuid>
+-- The 8-char hex suffix is the disambiguator; the rest is cosmetic.
+-- ============================================================
+create or replace function public.resolve_binder_slug(p_slug text)
+returns uuid language plpgsql stable security definer set search_path = public as $$
+declare
+  v_suffix text;
+  v_id uuid;
+  v_count int;
+begin
+  v_suffix := lower(substring(p_slug from '[0-9a-f]{8}$'));
+  if v_suffix is null then return null; end if;
+  select count(*) into v_count from public.binders
+    where id::text like v_suffix || '%';
+  if v_count <> 1 then return null; end if;
+  select id into v_id from public.binders
+    where id::text like v_suffix || '%';
+  return v_id;
+end;
+$$;
+revoke all on function public.resolve_binder_slug(text) from public;
+grant execute on function public.resolve_binder_slug(text) to anon, authenticated;
+
+-- ============================================================
+-- AUTO-SEARCH presence (mobile feature)
+-- ------------------------------------------------------------
+-- A user opts in via the Jolly icon. While active, their row in
+-- user_presence is upserted every 60s with coarse-rounded lat/lng
+-- (~110m grid) and an optional event_code. Discovery is hybrid:
+--   * GPS proximity (≤ 500 m) — ad-hoc encounters
+--   * Event code match (≤ 2 mi / 3220 m) — organized events
+-- Rows auto-expire after 1 hour without re-ping. Re-tap = extend.
+-- Privacy: the table is RPC-only (no direct select); RPCs never
+-- echo lat/lng back to callers. Only the row owner can delete.
+-- See memory: project-pawpawko-mobile-auto-search.
+-- ============================================================
+
+create extension if not exists cube;
+create extension if not exists earthdistance;
+
+create table if not exists public.user_presence (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  lat        double precision not null,
+  lng        double precision not null,
+  event_code text,
+  last_ping  timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '1 hour')
+);
+
+create index if not exists user_presence_geo_idx
+  on public.user_presence using gist (ll_to_earth(lat, lng));
+create index if not exists user_presence_event_idx
+  on public.user_presence (lower(event_code))
+  where event_code is not null;
+create index if not exists user_presence_expires_idx
+  on public.user_presence (expires_at);
+
+alter table public.user_presence enable row level security;
+
+drop policy if exists "presence delete own" on public.user_presence;
+create policy "presence delete own"
+  on public.user_presence
+  for delete
+  using (auth.uid() = user_id);
+
+-- Upsert caller's presence row. Coarsens lat/lng (~110 m). Refreshes
+-- expires_at on every call so re-tapping Jolly extends the session.
+-- TTL is 1 hour without an event code, 4 hours with one (event sessions
+-- run longer because organized meetups last longer).
+-- event_code is normalized to lowercase + trimmed; empty string clears.
+create or replace function public.upsert_presence(
+  p_lat        double precision,
+  p_lng        double precision,
+  p_event_code text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public as $$
+declare
+  v_code text;
+  v_ttl  interval;
+begin
+  if auth.uid() is null then
+    raise exception 'must be authenticated';
+  end if;
+  v_code := nullif(lower(btrim(coalesce(p_event_code, ''))), '');
+  v_ttl  := case when v_code is not null then interval '4 hours' else interval '1 hour' end;
+  insert into public.user_presence (user_id, lat, lng, event_code, last_ping, expires_at)
+  values (
+    auth.uid(),
+    round(p_lat::numeric, 3)::double precision,
+    round(p_lng::numeric, 3)::double precision,
+    v_code,
+    now(),
+    now() + v_ttl
+  )
+  on conflict (user_id) do update
+    set lat        = excluded.lat,
+        lng        = excluded.lng,
+        event_code = excluded.event_code,
+        last_ping  = excluded.last_ping,
+        expires_at = excluded.expires_at;
+end;
+$$;
+revoke all on function public.upsert_presence(double precision, double precision, text) from public;
+grant execute on function public.upsert_presence(double precision, double precision, text) to authenticated;
+
+-- Force-clear caller's presence row (explicit OFF).
+create or replace function public.clear_presence()
+returns void
+language sql
+security definer
+set search_path = public as $$
+  delete from public.user_presence where user_id = auth.uid();
+$$;
+revoke all on function public.clear_presence() from public;
+grant execute on function public.clear_presence() to authenticated;
+
+-- Hybrid nearby trade binders. Filters:
+--   * presence not expired
+--   * not the caller themselves
+--   * (within 500 m) OR (matching event_code within 2 mi)
+--   * binder.flair = 'trade'
+-- Returns the same shape as search_binders plus a distance_m column
+-- so the UI can show "120m away" etc. The two-way distance is computed
+-- once in the WITH clause and reused in the WHERE.
+create or replace function public.nearby_trade_binders(
+  p_lat        double precision,
+  p_lng        double precision,
+  p_event_code text default null
+) returns table (
+  binder_id          uuid,
+  user_id            uuid,
+  display_name       text,
+  binder_name        text,
+  binder_description text,
+  sleeve_image_url   text,
+  flair              text,
+  category           text,
+  last_updated_at    timestamptz,
+  distance_m         double precision
+)
+language sql
+stable
+security definer
+set search_path = public as $$
+  with code as (
+    select nullif(lower(btrim(coalesce(p_event_code, ''))), '') as v
+  ),
+  caller_pt as (
+    select ll_to_earth(p_lat, p_lng) as pt
+  ),
+  active as (
+    select up.user_id,
+           up.event_code,
+           earth_distance(ll_to_earth(up.lat, up.lng), (select pt from caller_pt)) as distance_m
+      from public.user_presence up
+     where up.expires_at > now()
+       and up.user_id <> coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid)
+  ),
+  hits as (
+    select a.user_id, a.distance_m
+      from active a, code
+     where a.distance_m <= 500
+        or (code.v is not null and a.event_code = code.v and a.distance_m <= 3220)
+  )
+  select b.id as binder_id,
+         b.user_id,
+         p.display_name,
+         b.name as binder_name,
+         b.description as binder_description,
+         b.sleeve_image_url,
+         b.flair,
+         b.category,
+         coalesce((select max(l.created_at) from public.listings l where l.binder_id = b.id), b.created_at) as last_updated_at,
+         h.distance_m
+    from hits h
+    join public.binders b on b.user_id = h.user_id
+    join public.profiles p on p.user_id = b.user_id
+   where b.flair = 'trade'
+   order by h.distance_m asc, last_updated_at desc
+   limit 200;
+$$;
+revoke all on function public.nearby_trade_binders(double precision, double precision, text) from public;
+grant execute on function public.nearby_trade_binders(double precision, double precision, text) to authenticated;
+
+-- Phase 2: wishlist matches across the same hybrid nearby set.
+-- Returns one row per (nearby trade binder × matched card_code group):
+-- binder_id, owner_display_name, the matched card codes the caller
+-- has on any of their wishlist binders for the SAME game.
+create or replace function public.nearby_wishlist_matches(
+  p_lat        double precision,
+  p_lng        double precision,
+  p_event_code text default null
+) returns table (
+  binder_id          uuid,
+  owner_user_id      uuid,
+  owner_display_name text,
+  category           text,
+  matched_card_codes text[]
+)
+language sql
+stable
+security definer
+set search_path = public as $$
+  with code as (
+    select nullif(lower(btrim(coalesce(p_event_code, ''))), '') as v
+  ),
+  caller_pt as (
+    select ll_to_earth(p_lat, p_lng) as pt
+  ),
+  active as (
+    select up.user_id,
+           up.event_code,
+           earth_distance(ll_to_earth(up.lat, up.lng), (select pt from caller_pt)) as distance_m
+      from public.user_presence up
+     where up.expires_at > now()
+       and up.user_id <> coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid)
+  ),
+  hits as (
+    select a.user_id, a.distance_m
+      from active a, code
+     where a.distance_m <= 500
+        or (code.v is not null and a.event_code = code.v and a.distance_m <= 3220)
+  ),
+  -- Caller's wishlist card_codes per game.
+  my_wishes as (
+    select b.category, l.card_code
+      from public.binders b
+      join public.listings l on l.binder_id = b.id
+     where b.user_id = auth.uid()
+       and b.flair  = 'wishlist'
+  )
+  select b.id as binder_id,
+         b.user_id as owner_user_id,
+         p.display_name as owner_display_name,
+         b.category,
+         array_agg(distinct l.card_code order by l.card_code) as matched_card_codes
+    from hits h
+    join public.binders  b on b.user_id = h.user_id and b.flair = 'trade'
+    join public.profiles p on p.user_id = b.user_id
+    join public.listings l on l.binder_id = b.id
+    join my_wishes m on m.category = b.category and m.card_code = l.card_code
+   group by b.id, b.user_id, p.display_name, b.category
+   order by array_length(array_agg(distinct l.card_code), 1) desc nulls last
+   limit 200;
+$$;
+revoke all on function public.nearby_wishlist_matches(double precision, double precision, text) from public;
+grant execute on function public.nearby_wishlist_matches(double precision, double precision, text) to authenticated;
+
+-- ============================================================
+-- TRADE TAP — two-way wishlist↔trade matches between two users
+-- ------------------------------------------------------------
+-- Caller and the partner (passed by user_id) get a single result
+-- set listing every card where one side wants what the other has,
+-- in either direction. MUTUAL trades (both directions hit) sort
+-- to the top.
+--   * i_want_they_have  = my wishlist ∩ their trade
+--   * they_want_i_have  = their wishlist ∩ my trade
+-- A row appears if either direction holds; both flags true = mutual.
+-- Card lookups join `cards` on (game, card_code) so the consumer
+-- gets name + image_url for free.
+-- See memory: project-pawpawko-mobile-trade-tap.
+-- ============================================================
+
+create or replace function public.trade_matches(p_partner_user_id uuid)
+returns table (
+  game                  text,
+  card_code             text,
+  card_name             text,
+  card_image_url        text,
+  i_want_they_have      boolean,
+  they_want_i_have      boolean,
+  my_trade_binder_id    uuid,
+  their_trade_binder_id uuid,
+  mutual                boolean
+)
+language sql
+stable
+security definer
+set search_path = public as $$
+  with me as (select auth.uid() as user_id),
+  my_wish as (
+    select b.category as game, l.card_code
+      from public.binders b
+      join public.listings l on l.binder_id = b.id
+      join me on b.user_id = me.user_id
+     where b.flair = 'wishlist'
+  ),
+  my_trade as (
+    select b.category as game, l.card_code, b.id as binder_id
+      from public.binders b
+      join public.listings l on l.binder_id = b.id
+      join me on b.user_id = me.user_id
+     where b.flair = 'trade'
+  ),
+  their_wish as (
+    select b.category as game, l.card_code
+      from public.binders b
+      join public.listings l on l.binder_id = b.id
+     where b.user_id = p_partner_user_id and b.flair = 'wishlist'
+  ),
+  their_trade as (
+    select b.category as game, l.card_code, b.id as binder_id
+      from public.binders b
+      join public.listings l on l.binder_id = b.id
+     where b.user_id = p_partner_user_id and b.flair = 'trade'
+  ),
+  all_codes as (
+    select distinct game, card_code from (
+      -- cards I want that they have
+      select mw.game, mw.card_code
+        from my_wish mw
+        join their_trade tt on tt.game = mw.game and tt.card_code = mw.card_code
+      union
+      -- cards they want that I have
+      select tw.game, tw.card_code
+        from their_wish tw
+        join my_trade mt on mt.game = tw.game and mt.card_code = tw.card_code
+    ) u
+  )
+  select c.game,
+         c.card_code,
+         cd.name      as card_name,
+         cd.image_url as card_image_url,
+         (exists (select 1 from my_wish    mw where mw.game = c.game and mw.card_code = c.card_code)
+            and exists (select 1 from their_trade tt where tt.game = c.game and tt.card_code = c.card_code)) as i_want_they_have,
+         (exists (select 1 from their_wish tw where tw.game = c.game and tw.card_code = c.card_code)
+            and exists (select 1 from my_trade    mt where mt.game = c.game and mt.card_code = c.card_code)) as they_want_i_have,
+         (select binder_id from my_trade    where game = c.game and card_code = c.card_code limit 1) as my_trade_binder_id,
+         (select binder_id from their_trade where game = c.game and card_code = c.card_code limit 1) as their_trade_binder_id,
+         ((exists (select 1 from my_wish    mw where mw.game = c.game and mw.card_code = c.card_code)
+             and exists (select 1 from their_trade tt where tt.game = c.game and tt.card_code = c.card_code))
+          and
+          (exists (select 1 from their_wish tw where tw.game = c.game and tw.card_code = c.card_code)
+             and exists (select 1 from my_trade    mt where mt.game = c.game and mt.card_code = c.card_code))) as mutual
+    from all_codes c
+    join public.cards cd on cd.game = c.game and cd.card_code = c.card_code
+   order by mutual desc,
+            c.game asc,
+            c.card_code asc;
+$$;
+revoke all on function public.trade_matches(uuid) from public;
+grant execute on function public.trade_matches(uuid) to authenticated;
+
+-- Phase 2: Recent Taps history. One row per caller × partner × day,
+-- so repeat taps on the same day update existing rows instead of
+-- polluting history.
+create table if not exists public.trade_tap_history (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  partner_user_id uuid not null references auth.users(id) on delete cascade,
+  tapped_at       timestamptz not null default now(),
+  match_count     int not null default 0,
+  -- Trick: store the date as a generated column so the unique constraint
+  -- gives us "one tap per partner per day" without needing an expression
+  -- index (which Postgres allows but Supabase Studio can't display nicely).
+  tapped_on       date generated always as ((tapped_at at time zone 'UTC')::date) stored
+);
+create unique index if not exists trade_tap_history_user_partner_day_idx
+  on public.trade_tap_history (user_id, partner_user_id, tapped_on);
+create index if not exists trade_tap_history_user_idx
+  on public.trade_tap_history (user_id, tapped_at desc);
+
+alter table public.trade_tap_history enable row level security;
+
+drop policy if exists "tap history select own" on public.trade_tap_history;
+create policy "tap history select own"
+  on public.trade_tap_history
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "tap history delete own" on public.trade_tap_history;
+create policy "tap history delete own"
+  on public.trade_tap_history
+  for delete
+  using (auth.uid() = user_id);
+
+-- Insert/update is RPC-only. Caller must be authenticated and the
+-- partner must be a real auth.users row (FK guards that).
+create or replace function public.record_trade_tap(p_partner_user_id uuid, p_match_count int)
+returns uuid
+language plpgsql
+security definer
+set search_path = public as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'must be authenticated';
+  end if;
+  if p_partner_user_id is null then
+    raise exception 'p_partner_user_id is required';
+  end if;
+  if p_partner_user_id = auth.uid() then
+    raise exception 'cannot record a trade tap with yourself';
+  end if;
+  insert into public.trade_tap_history (user_id, partner_user_id, match_count)
+  values (auth.uid(), p_partner_user_id, greatest(coalesce(p_match_count, 0), 0))
+  on conflict (user_id, partner_user_id, tapped_on) do update
+    set match_count = excluded.match_count,
+        tapped_at   = now()
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke all on function public.record_trade_tap(uuid, int) from public;
+grant execute on function public.record_trade_tap(uuid, int) to authenticated;

@@ -177,8 +177,6 @@
     if (error) {
       if (error.code === '23505' && /display_name/i.test(error.message || '')) {
         errEl.textContent = `That display name is already taken — try another.`;
-      } else if (/90 days/i.test(error.message || '')) {
-        errEl.textContent = 'Display name can only be changed once every 90 days.';
       } else if (/disallowed words/i.test(error.message || '')) {
         errEl.textContent = 'That display name contains disallowed words — pick a different name.';
       } else {
