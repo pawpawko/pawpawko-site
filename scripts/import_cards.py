@@ -148,11 +148,27 @@ RELEASE_ORDER = {
     'OP01':1,'ST03':1,'ST02':1,'ST01':1,
 }
 
+# A numbered set in a known family, e.g. OP16-001 -> "OP16", PRB02-001 -> "PRB02".
+# Promo / other-product codes (e.g. "P-001") don't match and keep release_order 0.
+_SET_PREFIX_RE = re.compile(r"^(OP|ST|EB|PRB)\d{2,}$")
+
+# Set prefixes seen this run that weren't in RELEASE_ORDER (reported at the end).
+_UNKNOWN_SET_PREFIXES: set[str] = set()
+
+
 def release_order_for(card_code: str) -> int:
     for prefix, val in RELEASE_ORDER.items():
         if card_code.startswith(prefix):
             return val
-    return 0
+    # A freshly released set won't be in the hard-coded map yet. New sets are
+    # always the newest, so assign the newest order rather than 0 (which would
+    # silently sort them as the oldest). Tracked + reported so the exact
+    # cross-family wave ordering can be codified in RELEASE_ORDER afterward.
+    prefix = card_code.split("-")[0]
+    if _SET_PREFIX_RE.match(prefix):
+        _UNKNOWN_SET_PREFIXES.add(prefix)
+        return max(RELEASE_ORDER.values()) + 1
+    return 0  # promos / non-set products
 
 
 def fetch_series_list() -> list[tuple[str, str]]:
@@ -386,6 +402,17 @@ def main() -> None:
         time.sleep(0.3)
 
     print(f"=== Done. {total} rows upserted; {missing_img} cards had no image URL ===")
+
+    if _UNKNOWN_SET_PREFIXES:
+        assigned = max(RELEASE_ORDER.values()) + 1
+        print(
+            "  ! NEW SET(S) not in RELEASE_ORDER: "
+            + ", ".join(sorted(_UNKNOWN_SET_PREFIXES))
+            + f" — auto-assigned release_order={assigned} (newest). "
+            "Add them to the RELEASE_ORDER dict in scripts/import_cards.py to "
+            "lock their exact cross-family ordering, then re-run that series "
+            "with --full to re-upsert."
+        )
 
 
 if __name__ == "__main__":
