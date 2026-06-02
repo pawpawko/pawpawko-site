@@ -587,8 +587,18 @@
       from += page;
     }
     const seriesSel = document.getElementById('cbSeries');
+    // Series-name display rule: a hyphen survives ONLY when it's part of a
+    // series code (e.g. "OP-01", "sv1-1" — letter/digit on each side). Drop
+    // " - " separators, stand-alone word hyphens, and any leading/trailing
+    // dashes. Value stays raw so the `.eq('series', …)` query still matches.
+    // Applies to all sets, current and future.
+    const prettySeries = (raw) => raw
+      .replace(/\s+-\s+/g, ' ')
+      .replace(/([A-Za-z])-([A-Za-z])/g, '$1 $2')
+      .replace(/^[\s-]+|[\s-]+$/g, '')
+      .replace(/\s{2,}/g, ' ');
     [...seriesSet].sort().forEach(s => {
-      const o = document.createElement('option'); o.value = s; o.textContent = s;
+      const o = document.createElement('option'); o.value = s; o.textContent = prettySeries(s);
       seriesSel.appendChild(o);
     });
 
