@@ -213,6 +213,26 @@ def to_db_row(card: dict, release_order: int) -> dict:
     }
 
 
+def existing_card_codes(codes: list[str]) -> set[str]:
+    """Return the subset of `codes` already present in cards for game='pokemon'."""
+    found: set[str] = set()
+    for j in range(0, len(codes), 200):
+        chunk = codes[j:j+200]
+        quoted = ",".join(f'"{c}"' for c in chunk)
+        r = sb_session.get(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers=SB_HEADERS,
+            params={"select": "card_code", "game": "eq.pokemon", "card_code": f"in.({quoted})"},
+            timeout=60,
+        )
+        if r.status_code == 200:
+            found.update(row["card_code"] for row in r.json())
+        else:
+            print(f"  ! existence check failed: {r.status_code} {r.text[:200]}")
+            sys.exit(1)
+    return found
+
+
 def upsert_cards(rows: list[dict]) -> None:
     if not rows:
         return
@@ -240,7 +260,17 @@ def main() -> None:
         print("  ! POKEMONTCG_API_KEY is empty — proceeding with anon rate limits (slow). "
               "Grab a free key at https://dev.pokemontcg.io/ and add it to scripts/.env.")
 
-    only_set = sys.argv[1] if len(sys.argv) > 1 else None
+    args = sys.argv[1:]
+    # Incremental by default: only process cards not already in the DB.
+    # Pass --full to re-download/re-upsert everything (e.g. errata refresh).
+    full = "--full" in args
+    new_only = not full
+    positional = [a for a in args if not a.startswith("--")]
+    only_set = positional[0] if positional else None
+    if new_only:
+        print("    (incremental: skipping cards already in the database; pass --full to re-import all)")
+    else:
+        print("    (--full: re-importing every card)")
 
     print("[1] Fetching set list...")
     sets = fetch_sets()
@@ -269,6 +299,14 @@ def main() -> None:
             print(f"    fetched {len(raw_cards)} cards", flush=True)
 
             rows = [to_db_row(c, rel_order) for c in raw_cards]
+
+            if new_only:
+                have = existing_card_codes([r["card_code"] for r in rows])
+                rows = [r for r in rows if r["card_code"] not in have]
+                if not rows:
+                    print("    no new cards, skipping set", flush=True)
+                    continue
+                print(f"    {len(rows)} new cards to import", flush=True)
 
             uploaded = reused = 0
             for row in rows:

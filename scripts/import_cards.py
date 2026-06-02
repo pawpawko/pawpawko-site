@@ -312,11 +312,17 @@ def main() -> None:
     print("=== Pawpaw Ko card import (R2 mode) ===")
 
     args = sys.argv[1:]
-    new_only = "--new-only" in args
+    # Incremental by default: only process cards not already in the DB.
+    # Pass --full to re-download/re-upsert everything (e.g. errata refresh).
+    # --new-only is still accepted as an explicit no-op alias.
+    full = "--full" in args
+    new_only = not full
     positional = [a for a in args if not a.startswith("--")]
     only = positional[0] if positional else None
     if new_only:
-        print("    (--new-only: skipping cards already in the database)")
+        print("    (incremental: skipping cards already in the database; pass --full to re-import all)")
+    else:
+        print("    (--full: re-importing every card)")
     if only:
         print(f"[1] Single-series mode (series={only})")
         series = [(only, f"series {only}")]
