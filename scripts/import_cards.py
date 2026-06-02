@@ -135,6 +135,7 @@ SB = {
 }
 
 RELEASE_ORDER = {
+    'OP16':31,'ST30':31,
     'OP15':30,'OP14':29,'EB04':28,'PRB02':28,'ST29':28,
     'OP13':27,'ST28':27,'ST27':26,'ST26':25,
     'EB03':24,'OP12':24,'ST25':24,'ST24':23,'ST23':22,'OP11':21,
@@ -268,6 +269,26 @@ def parse_cards(html: str) -> list[dict]:
     return cards
 
 
+def existing_card_codes(codes: list[str]) -> set[str]:
+    """Return the subset of `codes` already present in the cards table."""
+    found: set[str] = set()
+    for j in range(0, len(codes), 200):
+        chunk = codes[j:j+200]
+        quoted = ",".join(f'"{c}"' for c in chunk)
+        r = sb_session.get(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers=SB,
+            params={"select": "card_code", "card_code": f"in.({quoted})"},
+            timeout=60,
+        )
+        if r.status_code == 200:
+            found.update(row["card_code"] for row in r.json())
+        else:
+            print(f"  ! existence check failed: {r.status_code} {r.text[:200]}")
+            sys.exit(1)
+    return found
+
+
 def upsert_cards(rows: list[dict]) -> None:
     if not rows:
         return
@@ -290,7 +311,12 @@ def upsert_cards(rows: list[dict]) -> None:
 def main() -> None:
     print("=== Pawpaw Ko card import (R2 mode) ===")
 
-    only = sys.argv[1] if len(sys.argv) > 1 else None
+    args = sys.argv[1:]
+    new_only = "--new-only" in args
+    positional = [a for a in args if not a.startswith("--")]
+    only = positional[0] if positional else None
+    if new_only:
+        print("    (--new-only: skipping cards already in the database)")
     if only:
         print(f"[1] Single-series mode (series={only})")
         series = [(only, f"series {only}")]
@@ -311,6 +337,14 @@ def main() -> None:
             r.encoding = "utf-8"
             cards = parse_cards(r.text)
             print(f"    parsed {len(cards)} card entries", flush=True)
+
+            if new_only:
+                have = existing_card_codes([c["card_code"] for c in cards])
+                cards = [c for c in cards if c["card_code"] not in have]
+                if not cards:
+                    print("    no new cards, skipping series", flush=True)
+                    continue
+                print(f"    {len(cards)} new cards to import", flush=True)
 
             uploaded = reused = 0
             for c in cards:
