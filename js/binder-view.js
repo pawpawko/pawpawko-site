@@ -10,8 +10,8 @@
   if (!window.SB_READY) return;
 
   const params       = new URLSearchParams(location.search);
-  const binderId     = params.get('id');           // new: binder UUID
-  const slug         = (params.get('slug') || '').toLowerCase();   // legacy
+  let   binderId     = params.get('id');           // binder UUID (canonical)
+  const slug         = (params.get('slug') || '').toLowerCase();   // pretty share link
   const userId       = params.get('user');         // legacy fallback
   const autoEditMode = params.get('edit') === '1' || params.get('aesthetics') === '1';
   const autoAesthetics = params.get('aesthetics') === '1';
@@ -57,6 +57,14 @@
     const me = await window.PK.currentUser();
     viewerUserId = me?.id || null;
     const isLoggedIn = !!me;
+
+    // Resolve slug → binderId via RPC before the main load path. Slug format is
+    // <owner>-<binder-name>-<first-8-hex-of-uuid>; the suffix is the disambiguator.
+    if (!binderId && slug) {
+      const { data: resolvedId, error: resolveErr } =
+        await window.sb.rpc('resolve_binder_slug', { p_slug: slug });
+      if (!resolveErr && resolvedId) binderId = resolvedId;
+    }
 
     // 1. Load binder + owner profile
     let binder, profErr;
