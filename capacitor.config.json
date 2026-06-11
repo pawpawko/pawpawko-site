@@ -1,0 +1,8 @@
+{
+  "appId": "com.pawpawko.app",
+  "appName": "Pawpawko",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
