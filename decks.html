@@ -60,6 +60,10 @@
     .eye-btn.public .eye-on { display:block; }
     .eye-btn.public .eye-off { display:none; }
     .deck-flair { cursor:pointer; flex:none; }
+    .eye-wrap { position:relative; flex:none; display:inline-flex; }
+    .eye-tip { position:absolute; top:calc(100% + 8px); right:0; width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; z-index:50; display:none; pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+    .eye-wrap:hover .eye-tip { display:block; }
+    #edWishlistBtn, #edDeleteBtn { width:100%; text-align:center; }
   </style>
 </head>
 <body>
@@ -172,10 +176,13 @@
             <div class="form-group" style="margin-top:1rem;">
               <div class="name-row">
                 <input class="form-input" type="text" id="edDeckName" maxlength="60">
-                <button class="eye-btn" id="edEyeBtn" type="button" title="Make deck public" aria-label="Toggle deck visibility">
+                <span class="eye-wrap">
+                <button class="eye-btn" id="edEyeBtn" type="button" aria-label="Toggle deck visibility">
                   <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.4 10.4 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.9 9.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
                   <svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
+                <span class="eye-tip" id="edEyeTip" role="tooltip"></span>
+                </span>
                 <span class="deck-badge pub deck-flair" id="edFlair" style="display:none;" title="Change listing type"></span>
               </div>
             </div>

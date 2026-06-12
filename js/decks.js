@@ -377,7 +377,7 @@
     if (deck.is_public) {
       eye.classList.add('public');
       eye.disabled = false;
-      eye.title = 'Public — click to unpublish';
+      $('edEyeTip').textContent = 'Public — click to unpublish';
       flair.textContent = deck.listing_type || 'public';
       flair.style.display = '';
     } else {
@@ -387,8 +387,8 @@
       }
       eye.classList.remove('public');
       eye.disabled = !publishable;
-      eye.title = publishable ? 'Make deck public'
-                              : `Not ready to publish — ${reasons.join(' · ')}`;
+      $('edEyeTip').textContent = publishable ? 'Make deck public'
+                                              : `Not ready to publish — ${reasons.join(' · ')}`;
       flair.style.display = 'none';
       if (eye.disabled) $('edPublishOpts').style.display = 'none';
     }
