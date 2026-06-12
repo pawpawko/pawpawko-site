@@ -66,6 +66,7 @@
     ['cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
+    $('cbMore').addEventListener('click', loadMoreBrowser);
     $('cbClear').addEventListener('click', () => {
       ['cbName', 'cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id => { $(id).value = ''; });
       loadBrowser();
@@ -423,10 +424,12 @@
     fill('cbRarity', ['C', 'UC', 'R', 'SR', 'SEC', 'P']);
   }
 
-  async function loadBrowser() {
-    if (!deck || !leaderCard) return;
-    const grid = $('cbGrid'), count = $('cbCount');
-    count.textContent = 'Loading…';
+  // Incremental browser: server pages of 300 feed a filtered list rendered
+  // 60 at a time; Load More keeps appending until everything is shown.
+  let cbRows = [], cbShown = 0, cbFrom = 0, cbDone = false, cbSeq = 0;
+  const CB_PAGE = 60, CB_FETCH = 300;
+
+  async function fetchBrowserChunk() {
     const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
       .map(c => `color.ilike.%${c}%`).join(',');
     let q = window.sb
@@ -434,7 +437,7 @@
       .select('card_code,name,color,cost,type,image_url')
       .eq('game', GAME).neq('type', 'LEADER')
       .order('release_order', { ascending: false })
-      .limit(300);
+      .range(cbFrom, cbFrom + CB_FETCH - 1);
     const name = $('cbName').value.trim();
     if (name) q = q.or(`name.ilike.%${name}%,card_code.ilike.%${name}%`);
     if ($('cbSeries').value) q = q.eq('series', $('cbSeries').value);
@@ -452,15 +455,53 @@
     if ($('cbRarity').value) q = q.eq('rarity', $('cbRarity').value);
     if (colorOr) q = q.or(colorOr);
     const { data, error } = await q;
-    grid.innerHTML = '';
-    if (error) { count.textContent = 'Error: ' + error.message; return; }
-    const rows = (data || []).filter(c =>
+    if (error) return error;
+    cbFrom += (data || []).length;
+    if (!data || data.length < CB_FETCH) cbDone = true;
+    cbRows = cbRows.concat((data || []).filter(c =>
       isBase(c.card_code) && capFor(c.card_code) !== 0 &&
-      (deck.format !== 'standard' || standardLegal(c.card_code))).slice(0, 60);
-    count.textContent = rows.length
-      ? `${rows.length}${(data || []).length >= 300 ? '+' : ''} legal cards — click to add`
+      (deck.format !== 'standard' || standardLegal(c.card_code))));
+    return null;
+  }
+
+  async function loadBrowser() {
+    if (!deck || !leaderCard) return;
+    const seq = ++cbSeq;
+    cbRows = []; cbShown = 0; cbFrom = 0; cbDone = false;
+    $('cbCount').textContent = 'Loading…';
+    $('cbGrid').innerHTML = '';
+    $('cbMore').style.display = 'none';
+    while (cbRows.length < CB_PAGE && !cbDone) {
+      const err = await fetchBrowserChunk();
+      if (seq !== cbSeq) return; // filters changed mid-flight
+      if (err) { $('cbCount').textContent = 'Error: ' + err.message; return; }
+    }
+    cbShown = Math.min(CB_PAGE, cbRows.length);
+    renderBrowser();
+  }
+
+  async function loadMoreBrowser() {
+    const seq = cbSeq;
+    $('cbMore').disabled = true;
+    while (cbRows.length < cbShown + CB_PAGE && !cbDone) {
+      const err = await fetchBrowserChunk();
+      if (seq !== cbSeq) return;
+      if (err) break;
+    }
+    if (seq !== cbSeq) return;
+    cbShown = Math.min(cbShown + CB_PAGE, cbRows.length);
+    $('cbMore').disabled = false;
+    renderBrowser();
+  }
+
+  function renderBrowser() {
+    const grid = $('cbGrid');
+    grid.innerHTML = '';
+    const hasMore = cbRows.length > cbShown || !cbDone;
+    $('cbCount').textContent = cbShown
+      ? `${cbShown}${hasMore ? '+' : ''} cards to add`
       : 'No legal cards match.';
-    rows.forEach(c => {
+    cbRows.slice(0, cbShown).forEach(c => {
       const inDeck = deckCards.find(r => r.card_code === c.card_code);
       const tile = document.createElement('button');
       tile.className = 'cb-tile';
@@ -473,6 +514,7 @@
       tile.addEventListener('click', () => addCard(c));
       grid.appendChild(tile);
     });
+    $('cbMore').style.display = hasMore ? '' : 'none';
   }
 
   async function addCard(card) {
@@ -488,7 +530,7 @@
           .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1 })).error;
     if (error) { $('cbError').textContent = error.message; return; } // trigger messages: copies/bans/pairs
     await reloadDeckCards();
-    loadBrowser(); // refresh the xN markers
+    renderBrowser(); // refresh the xN markers without resetting Load More
   }
 
   async function refreshValidity() {
