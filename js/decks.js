@@ -232,42 +232,64 @@
     refreshValidity();
   }
 
+  // Deck contents: one tile per unique card with a x1..x4 / X quantity
+  // badge; clicking a tile opens the qty/owned editor row beneath the grid.
+  let selectedCode = null;
+
   function renderDeck() {
-    const list = $('edDeckList');
-    list.innerHTML = '';
+    const grid = $('edDeckGrid');
+    grid.innerHTML = '';
 
     const sorted = deckCards.slice().sort((a, b) => {
       const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
       return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
     });
+    if (!sorted.some(r => r.card_code === selectedCode)) selectedCode = null;
 
     sorted.forEach(r => {
       const c = cardInfo[r.card_code] || {};
-      const li = document.createElement('li');
-      li.className = 'deck-row';
-      const cap = capFor(r.card_code);
-      li.innerHTML = `
-        <img src="${esc(c.image_url || '')}" alt="">
-        <div class="row-main">
-          <div class="row-name">${esc(c.name || r.card_code)}</div>
-          <div class="row-sub">${esc(r.card_code)} · ${esc(c.color || '')} · cost ${c.cost ?? '—'}</div>
-        </div>
-        <div>
-          <span class="stepper-label">Qty</span>
-          <div class="stepper" data-kind="qty">
-            <button data-d="-1">−</button><span class="val">${r.quantity}</span><button data-d="1" ${cap !== null && r.quantity >= cap ? 'disabled' : ''}>+</button>
-          </div>
-        </div>
-        <div>
-          <span class="stepper-label">Owned</span>
-          <div class="stepper ${r.owned >= r.quantity ? 'owned-full' : ''}" data-kind="owned">
-            <button data-d="-1" ${r.owned <= 0 ? 'disabled' : ''}>−</button><span class="val">${r.owned}/${r.quantity}</span><button data-d="1" ${r.owned >= r.quantity ? 'disabled' : ''}>+</button>
-          </div>
-        </div>`;
-      li.querySelectorAll('.stepper button').forEach(btn => {
-        btn.addEventListener('click', () => stepCard(r.card_code, btn.closest('.stepper').dataset.kind, parseInt(btn.dataset.d, 10)));
+      const tile = document.createElement('div');
+      tile.className = 'deck-card-tile' + (r.card_code === selectedCode ? ' selected' : '');
+      tile.title = `${c.name || r.card_code} — ${r.quantity} in deck, ${r.owned} owned`;
+      tile.innerHTML = `
+        <img src="${esc(c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
+        <span class="qty-badge">${r.quantity > 4 ? 'X' : 'x' + r.quantity}</span>`;
+      tile.addEventListener('click', () => {
+        selectedCode = selectedCode === r.card_code ? null : r.card_code;
+        renderDeck();
       });
-      list.appendChild(li);
+      grid.appendChild(tile);
+    });
+    renderCardEdit();
+  }
+
+  function renderCardEdit() {
+    const box = $('edCardEdit');
+    const r = deckCards.find(x => x.card_code === selectedCode);
+    if (!r) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const c = cardInfo[r.card_code] || {};
+    const cap = capFor(r.card_code);
+    box.style.display = '';
+    box.innerHTML = `
+      <img src="${esc(c.image_url || '')}" alt="">
+      <div class="row-main">
+        <div class="row-name">${esc(c.name || r.card_code)}</div>
+        <div class="row-sub">${esc(r.card_code)} · ${esc(c.color || '')} · cost ${c.cost ?? '—'}</div>
+      </div>
+      <div>
+        <span class="stepper-label">Qty</span>
+        <div class="stepper" data-kind="qty">
+          <button data-d="-1">−</button><span class="val">${r.quantity}</span><button data-d="1" ${cap !== null && r.quantity >= cap ? 'disabled' : ''}>+</button>
+        </div>
+      </div>
+      <div>
+        <span class="stepper-label">Owned</span>
+        <div class="stepper ${r.owned >= r.quantity ? 'owned-full' : ''}" data-kind="owned">
+          <button data-d="-1" ${r.owned <= 0 ? 'disabled' : ''}>−</button><span class="val">${r.owned}/${r.quantity}</span><button data-d="1" ${r.owned >= r.quantity ? 'disabled' : ''}>+</button>
+        </div>
+      </div>`;
+    box.querySelectorAll('.stepper button').forEach(btn => {
+      btn.addEventListener('click', () => stepCard(r.card_code, btn.closest('.stepper').dataset.kind, parseInt(btn.dataset.d, 10)));
     });
   }
 
