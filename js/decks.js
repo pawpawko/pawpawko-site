@@ -239,6 +239,7 @@
   function renderDeck() {
     const grid = $('edDeckGrid');
     grid.innerHTML = '';
+    grid.classList.toggle('empty', deckCards.length === 0); // space stays put
 
     const sorted = deckCards.slice().sort((a, b) => {
       const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};

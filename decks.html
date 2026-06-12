@@ -65,7 +65,8 @@
     .eye-wrap:hover .eye-tip { display:block; }
     #edWishlistBtn, #edDeleteBtn { width:100%; text-align:center; }
     #edCounts { margin-top:.9rem; }
-    .deck-cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(86px, 1fr)); gap:.6rem; margin-bottom:1rem; }
+    .deck-cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(86px, 1fr)); gap:.6rem; margin-bottom:1rem; min-height:128px; }
+    .deck-cards-grid.empty { border:1px dashed var(--border, #3a3344); border-radius:8px; }
     .deck-card-tile { position:relative; cursor:pointer; }
     .deck-card-tile img { width:100%; aspect-ratio:.72; object-fit:cover; border-radius:6px; display:block; }
     .deck-card-tile.selected img { outline:2px solid #c9956a; }
