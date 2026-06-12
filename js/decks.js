@@ -63,12 +63,12 @@
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBrowser(); });
-    ['cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id =>
+    ['cbType', 'cbTrait', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
     $('cbMore').addEventListener('click', loadMoreBrowser);
     $('cbClear').addEventListener('click', () => {
-      ['cbName', 'cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id => { $(id).value = ''; });
+      ['cbName', 'cbType', 'cbTrait', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id => { $(id).value = ''; });
       loadBrowser();
     });
     $('edDeckName').addEventListener('change', renameDeck);
@@ -388,28 +388,22 @@
   }
 
   async function populateBrowserFilters() {
-    // Distinct series, paginated (PostgREST caps selects at 1000 rows).
-    const seriesSet = new Set();
+    // Distinct traits from cards.types, paginated (PostgREST 1000-row cap).
+    const traitSet = new Set();
     let from = 0;
     while (from < 20000) {
       const { data, error } = await window.sb
-        .from('cards').select('series').eq('game', GAME).range(from, from + 999);
+        .from('cards').select('types').eq('game', GAME)
+        .not('types', 'is', null).range(from, from + 999);
       if (error || !data || data.length === 0) break;
-      data.forEach(r => r.series && seriesSet.add(r.series));
+      data.forEach(r => (r.types || []).forEach(t => traitSet.add(t)));
       if (data.length < 1000) break;
       from += 1000;
     }
-    // Same series-name display rule as the binder browser: keep code hyphens
-    // (OP-01), drop separator/word hyphens; value stays raw for .eq matches.
-    const prettySeries = (raw) => raw
-      .replace(/\s+-\s+/g, ' ')
-      .replace(/([A-Za-z])-([A-Za-z])/g, '$1 $2')
-      .replace(/^[\s-]+|[\s-]+$/g, '')
-      .replace(/\s{2,}/g, ' ');
-    const sel = $('cbSeries');
-    [...seriesSet].sort().forEach(s => {
+    const sel = $('cbTrait');
+    [...traitSet].sort((a, b) => a.localeCompare(b)).forEach(t => {
       const o = document.createElement('option');
-      o.value = s; o.textContent = prettySeries(s);
+      o.value = t; o.textContent = t;
       sel.appendChild(o);
     });
     const fill = (id, vals) => vals.forEach(v => {
@@ -421,7 +415,6 @@
     fill('cbCost', Array.from({ length: 11 }, (_, i) => i));
     fill('cbAbility', ['Blocker', 'Rush', 'Searcher']);
     fill('cbCounter', ['1000', '2000', 'None']);
-    fill('cbRarity', ['C', 'UC', 'R', 'SR', 'SEC', 'P']);
   }
 
   // Incremental browser: server pages of 300 feed a filtered list rendered
@@ -440,8 +433,9 @@
       .range(cbFrom, cbFrom + CB_FETCH - 1);
     const name = $('cbName').value.trim();
     if (name) q = q.or(`name.ilike.%${name}%,card_code.ilike.%${name}%`);
-    if ($('cbSeries').value) q = q.eq('series', $('cbSeries').value);
     if ($('cbType').value) q = q.eq('type', $('cbType').value);
+    // Trait filter is inclusive: card's types array CONTAINS the pick.
+    if ($('cbTrait').value) q = q.contains('types', [$('cbTrait').value]);
     if ($('cbCost').value !== '') q = q.eq('cost', Number($('cbCost').value));
     // Ability filters key off effect-text conventions: [Blocker] / [Rush]
     // keywords; searchers phrase as "look at … top of your deck … add … hand".
@@ -452,7 +446,6 @@
     const counter = $('cbCounter').value;
     if (counter === 'None') q = q.is('counter', null);
     else if (counter) q = q.eq('counter', Number(counter));
-    if ($('cbRarity').value) q = q.eq('rarity', $('cbRarity').value);
     if (colorOr) q = q.or(colorOr);
     const { data, error } = await q;
     if (error) return error;
@@ -499,7 +492,7 @@
     grid.innerHTML = '';
     const hasMore = cbRows.length > cbShown || !cbDone;
     $('cbCount').textContent = cbShown
-      ? `${cbShown}${hasMore ? '+' : ''} cards to add`
+      ? `${cbShown}${hasMore ? "+" : ""} cards`
       : 'No legal cards match.';
     cbRows.slice(0, cbShown).forEach(c => {
       const inDeck = deckCards.find(r => r.card_code === c.card_code);

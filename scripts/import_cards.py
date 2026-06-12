@@ -280,7 +280,10 @@ def parse_cards(html: str) -> list[dict]:
             "image_url_lg": None,
             "_src_url": image_url,
             "release_order": release_order_for(code),
-            "feature": feature,
+            # Card traits ("Type" line on the card: FILM, Mink, Music, ...) go
+            # into the shared types text[] column; multi-trait cards are
+            # slash-separated on the source ("FILM/Music").
+            "types": [t.strip() for t in feature.split("/") if t.strip()] if feature else None,
         })
     return cards
 
