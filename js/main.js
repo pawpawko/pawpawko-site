@@ -31,12 +31,37 @@ navMobile?.querySelectorAll('a').forEach(link => {
   });
 });
 
-// Active nav link highlight
+// Active nav link highlight (a page inside a dropdown lights its trigger too)
 const currentPage = window.location.pathname.split('/').pop() || 'index.html';
 document.querySelectorAll('.nav-links a').forEach(link => {
   if (link.getAttribute('href') === currentPage) {
     link.classList.add('active');
+    link.closest('.nav-dd-wrap')?.querySelector('.nav-dd-btn')?.classList.add('active');
   }
+});
+
+// Nav dropdowns ("My Collection") — desktop click-toggle + mobile drawer group
+document.querySelectorAll('.nav-dd-wrap').forEach(wrap => {
+  const btn = wrap.querySelector('.nav-dd-btn');
+  const dd  = wrap.querySelector('.nav-dd');
+  if (!btn || !dd) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    btn.setAttribute('aria-expanded', String(dd.classList.toggle('open')));
+  });
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) dd.classList.remove('open');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') dd.classList.remove('open');
+  });
+});
+document.querySelectorAll('.nav-mobile-group').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sub = btn.nextElementSibling;
+    if (!sub) return;
+    btn.setAttribute('aria-expanded', String(sub.classList.toggle('open')));
+  });
 });
 
 // ---- Scroll fade-in animation ----

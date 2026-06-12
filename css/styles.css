@@ -2382,3 +2382,101 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
   border: 1px dashed var(--border);
 }
 .locked-pill a { color: var(--accent); }
+
+/* ---- Nav: Locals icon + "My Collection" dropdown ---- */
+.nav-ico { vertical-align: -1px; margin-right: 0.4rem; }
+.nav-caret { vertical-align: -1px; margin-left: 0.25rem; }
+.nav-dd-wrap { position: relative; }
+.nav-dd-btn {
+  font-family: var(--font-serif);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: var(--transition);
+}
+.nav-dd-btn::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: var(--transition);
+}
+.nav-dd-btn:hover,
+.nav-dd-btn.active { color: var(--text-primary); }
+.nav-dd-btn:hover::after,
+.nav-dd-btn.active::after { width: 100%; }
+.nav-dd {
+  position: absolute;
+  top: calc(100% + 0.65rem);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 160px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-accent);
+  display: none;
+  flex-direction: column;
+  z-index: 1100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.nav-dd.open { display: flex; }
+.nav-dd::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  margin-left: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-accent);
+  border-top: 1px solid var(--border-accent);
+  transform: rotate(45deg);
+}
+.nav-links .nav-dd a {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  padding: 0.85rem 1.25rem;
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.nav-links .nav-dd a::after { content: none; }
+.nav-links .nav-dd a:hover,
+.nav-links .nav-dd a.active {
+  color: var(--accent);
+  background: var(--bg-card-hover);
+}
+
+/* mobile drawer flavors */
+.nav-mobile .nav-ico { width: 20px; height: 20px; margin-right: 0.6rem; }
+.nav-mobile .nav-caret { width: 16px; height: 16px; margin-left: 0.4rem; }
+.nav-mobile-group {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  color: var(--text-primary);
+  letter-spacing: 0.1em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: var(--transition);
+}
+.nav-mobile-group:hover { color: var(--accent); }
+.nav-mobile-sub {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4rem;
+  margin-top: -0.6rem;
+}
+.nav-mobile-sub.open { display: flex; }
+.nav-mobile-sub a { font-size: 1.4rem; color: var(--text-secondary); }
