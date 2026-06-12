@@ -11,15 +11,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
   <link rel="stylesheet" href="css/styles.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+  <!-- Signed-in users land on the binders search by default; Home stays
+       reachable via the logo / footer links, which carry ?home. -->
+  <script>(function(){try{if(/(^|[?&])home([=&]|$)/.test(location.search))return;if(document.documentElement.classList.contains('is-signed-in'))location.replace('trades.html');}catch(e){}})();</script>
 </head>
 <body>
 
   <nav class="nav" id="nav">
     <div class="container">
       <div class="nav-inner">
-        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <a href="index.html?home" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
         <ul class="nav-links">
-          <li><a href="index.html" class="active">Home</a></li>
           <li><a href="trades.html">Binders</a></li>
           <li><a href="decks.html">Decks</a></li>
           <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
@@ -49,7 +51,6 @@
 
   <nav class="nav-mobile" id="navMobile">
     <button class="nav-close" id="navClose">✕</button>
-    <a href="index.html">Home</a>
     <a href="trades.html">Binders</a>
     <a href="decks.html">Decks</a>
     <!-- hidden-tab: <a href="gallery.html">Events</a> -->
@@ -77,7 +78,7 @@
     <div class="container">
       <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
       <ul class="footer-links">
-        <li><a href="index.html">Home</a></li>
+        <li><a href="index.html?home">Home</a></li>
         <li><a href="trades.html">Binders</a></li>
         <li><a href="decks.html">Decks</a></li>
         <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
