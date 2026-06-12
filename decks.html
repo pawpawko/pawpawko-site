@@ -30,9 +30,6 @@
     .count-bar { height:10px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; margin:.5rem 0 .25rem; }
     .count-bar > div { height:100%; background:#7ec96a; transition:width .25s; }
     .count-bar > div.over { background:#d98a8a; }
-    .deck-list, .pool-list { list-style:none; padding:0; margin:0; }
-    .deck-row, .pool-row { display:flex; align-items:center; gap:.75rem; padding:.45rem .35rem; border-bottom:1px solid rgba(255,255,255,.07); }
-    .deck-row img, .pool-row img { width:42px; aspect-ratio:.72; object-fit:cover; border-radius:4px; flex:none; }
     .row-main { flex:1; min-width:0; }
     .row-name { font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .row-sub  { font-size:.72rem; opacity:.65; }
@@ -42,7 +39,6 @@
     .stepper .val { min-width:1.4rem; text-align:center; font-size:.85rem; }
     .stepper-label { font-size:.6rem; letter-spacing:.05em; opacity:.6; text-transform:uppercase; display:block; text-align:center; }
     .owned-full .val { color:#7ec96a; }
-    .pool-row .add-btn { flex:none; }
     .leader-results { list-style:none; padding:0; margin:.5rem 0 0; max-height:380px; overflow:auto; border:1px solid var(--border,#3a3344); border-radius:8px; }
     .leader-results li { display:flex; gap:.7rem; align-items:center; padding:.45rem .6rem; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.06); }
     .leader-results li:hover { background:rgba(255,255,255,.05); }
@@ -65,14 +61,24 @@
     .eye-wrap:hover .eye-tip { display:block; }
     #edWishlistBtn, #edDeleteBtn { width:100%; text-align:center; }
     #edCounts { margin-top:.9rem; }
-    .deck-cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(86px, 1fr)); gap:.6rem; margin-bottom:1rem; min-height:128px; }
-    .deck-cards-grid.empty { border:1px dashed var(--border, #3a3344); border-radius:8px; }
+    .deck-cards-grid { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:.6rem; margin-bottom:1rem; }
     .deck-card-tile { position:relative; cursor:pointer; }
     .deck-card-tile img { width:100%; aspect-ratio:.72; object-fit:cover; border-radius:6px; display:block; }
     .deck-card-tile.selected img { outline:2px solid #c9956a; }
     .deck-card-tile .qty-badge { position:absolute; top:4px; right:4px; background:rgba(12,10,18,.85); border:1px solid var(--border,#3a3344); border-radius:999px; padding:.05rem .45rem; font-size:.74rem; line-height:1.3; }
+    .deck-card-tile.empty-slot { border:1px dashed var(--border,#3a3344); border-radius:6px; aspect-ratio:.72; cursor:default; }
     .deck-card-edit { display:flex; align-items:center; gap:.75rem; padding:.5rem .6rem; border:1px solid var(--border,#3a3344); border-radius:8px; margin-bottom:1rem; }
     .deck-card-edit img { width:42px; aspect-ratio:.72; object-fit:cover; border-radius:4px; flex:none; }
+    .cb-overlay { position:fixed; inset:0; background:rgba(8,6,14,.85); z-index:1200; overflow-y:auto; padding:3.5rem 1rem 2.5rem; }
+    .cb-box { max-width:1020px; margin:0 auto; background:var(--bg-primary,#181622); border:1px solid var(--border,#3a3344); border-radius:12px; padding:1.5rem 1.75rem 2rem; position:relative; }
+    .cb-close { position:absolute; top:.9rem; right:1rem; background:none; border:none; color:inherit; font-size:1.1rem; cursor:pointer; opacity:.7; }
+    .cb-close:hover { opacity:1; }
+    .cb-filters { display:flex; gap:.9rem; flex-wrap:wrap; align-items:flex-end; }
+    .cb-filters .filter-group { margin-bottom:0; flex:1 1 130px; }
+    .cb-filters .btn { flex:0 0 auto; }
+    .cb-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:.85rem; margin-top:1rem; }
+    @media (max-width:760px) { .cb-grid { grid-template-columns:repeat(3, minmax(0,1fr)); } }
+    .cb-in-deck { color:#7ec96a; }
   </style>
 </head>
 <body>
@@ -221,17 +227,50 @@
             <p class="auth-error" id="edError"></p>
           </div>
 
-          <!-- right: deck contents (card grid) + card pool -->
+          <!-- right: deck contents (5-wide card grid) + add button -->
           <div>
             <div class="deck-cards-grid" id="edDeckGrid"></div>
             <div class="deck-card-edit" id="edCardEdit" style="display:none;"></div>
-
-            <div class="deck-section-title">Add Cards</div>
-            <div class="form-group">
-              <input class="form-input" type="text" id="poolSearch" placeholder="Search cards by name or code" autocomplete="off">
-            </div>
-            <ul class="pool-list" id="edPoolList"></ul>
+            <button class="btn" id="edAddBtn" style="width:100%; text-align:center;">+ Add Cards</button>
           </div>
+        </div>
+      </div>
+
+      <!-- ============ ADD CARDS OVERLAY ============ -->
+      <div class="cb-overlay" id="cbOverlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Add cards">
+        <div class="cb-box">
+          <button class="cb-close" id="cbClose" aria-label="Close">✕</button>
+          <h3 style="margin-top:0;">Add Cards</h3>
+          <div class="cb-filters">
+            <div class="filter-group">
+              <label class="form-label" for="cbName">Search</label>
+              <input class="form-input" id="cbName" placeholder="Luffy, OP01-001, …" autocomplete="off">
+            </div>
+            <div class="filter-group">
+              <label class="form-label" for="cbSeries">Set</label>
+              <select class="form-input" id="cbSeries"><option value="">All</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="form-label" for="cbType">Type</label>
+              <select class="form-input" id="cbType"><option value="">All</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="form-label" for="cbCost">Cost</label>
+              <select class="form-input" id="cbCost"><option value="">Any</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="form-label" for="cbAttribute">Attribute</label>
+              <select class="form-input" id="cbAttribute"><option value="">Any</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="form-label" for="cbRarity">Rarity</label>
+              <select class="form-input" id="cbRarity"><option value="">Any</option></select>
+            </div>
+            <button class="btn" id="cbClear">Clear</button>
+          </div>
+          <p class="auth-error" id="cbError"></p>
+          <p class="results-count" id="cbCount"></p>
+          <div class="cb-grid" id="cbGrid"></div>
         </div>
       </div>
     </div>

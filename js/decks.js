@@ -56,7 +56,17 @@
     $('cancelNewDeck').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('leaderResults').innerHTML = ''; $('leaderSearch').value = ''; $('newDeckError').textContent = ''; });
     $('leaderSearch').addEventListener('input', debounce(searchLeaders, 250));
     $('backToDecks').addEventListener('click', showList);
-    $('poolSearch').addEventListener('input', debounce(searchPool, 250));
+    $('edAddBtn').addEventListener('click', openBrowser);
+    $('cbClose').addEventListener('click', closeBrowser);
+    $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBrowser(); });
+    ['cbSeries', 'cbType', 'cbCost', 'cbAttribute', 'cbRarity'].forEach(id =>
+      $(id).addEventListener('change', loadBrowser));
+    $('cbName').addEventListener('input', debounce(loadBrowser, 250));
+    $('cbClear').addEventListener('click', () => {
+      ['cbName', 'cbSeries', 'cbType', 'cbCost', 'cbAttribute', 'cbRarity'].forEach(id => { $(id).value = ''; });
+      loadBrowser();
+    });
     $('edDeckName').addEventListener('change', renameDeck);
     $('edWishlistBtn').addEventListener('click', pushMissingToWishlist);
     $('edEyeBtn').addEventListener('click', onEyeClick);
@@ -209,12 +219,9 @@
     $('edLeaderImg').src = L?.image_url_lg || L?.image_url || '';
     $('edDeckName').value = d.name;
     setPill('edFormat', d.format || 'standard');
-    $('poolSearch').value = '';
-    $('edPoolList').innerHTML = '';
     $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
     await reloadDeckCards();
-    searchPool(); // auto-fill the pool with the leader's legal cards
   }
 
   async function reloadDeckCards() {
@@ -239,7 +246,6 @@
   function renderDeck() {
     const grid = $('edDeckGrid');
     grid.innerHTML = '';
-    grid.classList.toggle('empty', deckCards.length === 0); // space stays put
 
     const sorted = deckCards.slice().sort((a, b) => {
       const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
@@ -261,6 +267,14 @@
       });
       grid.appendChild(tile);
     });
+
+    // Static 5-wide grid, minimum 4 rows: pad with empty slots to a full row.
+    const padTo = Math.max(20, Math.ceil(sorted.length / 5) * 5);
+    for (let i = sorted.length; i < padTo; i++) {
+      const ph = document.createElement('div');
+      ph.className = 'deck-card-tile empty-slot';
+      grid.appendChild(ph);
+    }
     renderCardEdit();
   }
 
@@ -324,46 +338,110 @@
     await reloadDeckCards();
   }
 
-  async function searchPool() {
-    const q = $('poolSearch').value.trim();
-    const out = $('edPoolList');
-    if (!leaderCard) { out.innerHTML = ''; return; }
-    // Legal pool: same game, non-Leader, sharing >=1 color with the leader.
-    // Shown automatically (newest first) — searching just narrows it. Rotated
-    // cards only ever appear when the deck's format is Eternal.
+  // ---------------- Add Cards overlay browser ----------------
+  // Full-screen scrollable overlay over the editor; binder-style filters
+  // minus Color (the leader locks it). Pool is leader-color matched, bans
+  // excluded; rotated cards only appear when the deck format is Eternal.
+
+  let cbReady = false; // filter dropdowns populated once
+
+  function openBrowser() {
+    $('cbOverlay').style.display = '';
+    document.body.style.overflow = 'hidden'; // the overlay scrolls, not the page
+    $('cbError').textContent = '';
+    if (!cbReady) { cbReady = true; populateBrowserFilters(); }
+    loadBrowser();
+    $('cbName').focus();
+  }
+
+  function closeBrowser() {
+    $('cbOverlay').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  async function populateBrowserFilters() {
+    // Distinct series, paginated (PostgREST caps selects at 1000 rows).
+    const seriesSet = new Set();
+    let from = 0;
+    while (from < 20000) {
+      const { data, error } = await window.sb
+        .from('cards').select('series').eq('game', GAME).range(from, from + 999);
+      if (error || !data || data.length === 0) break;
+      data.forEach(r => r.series && seriesSet.add(r.series));
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    // Same series-name display rule as the binder browser: keep code hyphens
+    // (OP-01), drop separator/word hyphens; value stays raw for .eq matches.
+    const prettySeries = (raw) => raw
+      .replace(/\s+-\s+/g, ' ')
+      .replace(/([A-Za-z])-([A-Za-z])/g, '$1 $2')
+      .replace(/^[\s-]+|[\s-]+$/g, '')
+      .replace(/\s{2,}/g, ' ');
+    const sel = $('cbSeries');
+    [...seriesSet].sort().forEach(s => {
+      const o = document.createElement('option');
+      o.value = s; o.textContent = prettySeries(s);
+      sel.appendChild(o);
+    });
+    const fill = (id, vals) => vals.forEach(v => {
+      const o = document.createElement('option');
+      o.value = String(v); o.textContent = String(v);
+      $(id).appendChild(o);
+    });
+    fill('cbType', ['CHARACTER', 'EVENT', 'STAGE']);
+    fill('cbCost', Array.from({ length: 11 }, (_, i) => i));
+    fill('cbAttribute', ['Slash', 'Strike', 'Special', 'Wisdom', 'Ranged']);
+    fill('cbRarity', ['C', 'UC', 'R', 'SR', 'SEC', 'P']);
+  }
+
+  async function loadBrowser() {
+    if (!deck || !leaderCard) return;
+    const grid = $('cbGrid'), count = $('cbCount');
+    count.textContent = 'Loading…';
     const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
       .map(c => `color.ilike.%${c}%`).join(',');
-    let query = window.sb
+    let q = window.sb
       .from('cards')
       .select('card_code,name,color,cost,type,image_url')
       .eq('game', GAME).neq('type', 'LEADER')
       .order('release_order', { ascending: false })
-      .limit(120);
-    if (q) query = query.or(`name.ilike.%${q}%,card_code.ilike.%${q}%`);
-    if (colorOr) query = query.or(colorOr);
-    const { data } = await query;
+      .limit(300);
+    const name = $('cbName').value.trim();
+    if (name) q = q.or(`name.ilike.%${name}%,card_code.ilike.%${name}%`);
+    if ($('cbSeries').value) q = q.eq('series', $('cbSeries').value);
+    if ($('cbType').value) q = q.eq('type', $('cbType').value);
+    if ($('cbCost').value !== '') q = q.eq('cost', Number($('cbCost').value));
+    if ($('cbAttribute').value) q = q.eq('attribute', $('cbAttribute').value);
+    if ($('cbRarity').value) q = q.eq('rarity', $('cbRarity').value);
+    if (colorOr) q = q.or(colorOr);
+    const { data, error } = await q;
+    grid.innerHTML = '';
+    if (error) { count.textContent = 'Error: ' + error.message; return; }
     const rows = (data || []).filter(c =>
       isBase(c.card_code) && capFor(c.card_code) !== 0 &&
-      (deck.format !== 'standard' || standardLegal(c.card_code))).slice(0, 30);
-    out.innerHTML = rows.length ? '' : '<li style="opacity:.6;padding:.6rem .35rem;">No legal cards match.</li>';
+      (deck.format !== 'standard' || standardLegal(c.card_code))).slice(0, 60);
+    count.textContent = rows.length
+      ? `${rows.length}${(data || []).length >= 300 ? '+' : ''} legal cards — click to add`
+      : 'No legal cards match.';
     rows.forEach(c => {
       const inDeck = deckCards.find(r => r.card_code === c.card_code);
-      const li = document.createElement('li');
-      li.className = 'pool-row';
-      li.innerHTML = `
-        <img src="${esc(c.image_url || '')}" alt="">
-        <div class="row-main">
-          <div class="row-name">${esc(c.name)}</div>
-          <div class="row-sub">${esc(c.card_code)} · ${esc(c.color || '')} · ${esc(c.type || '')} · cost ${c.cost ?? '—'}</div>
-        </div>
-        <button class="btn add-btn">${inDeck ? `+1 (${inDeck.quantity})` : 'Add'}</button>`;
-      li.querySelector('.add-btn').addEventListener('click', () => addCard(c));
-      out.appendChild(li);
+      const tile = document.createElement('button');
+      tile.className = 'cb-tile';
+      tile.innerHTML = `
+        <div class="cb-tile-img">${c.image_url
+          ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(c.image_url)}" alt="${esc(c.name || c.card_code)}">`
+          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}</div>
+        <div class="cb-tile-name">${esc(c.name || '')}${inDeck ? ` <span class="cb-in-deck">x${inDeck.quantity}</span>` : ''}</div>
+        <div class="cb-tile-code">${esc(c.card_code)}</div>`;
+      tile.addEventListener('click', () => addCard(c));
+      grid.appendChild(tile);
     });
   }
 
   async function addCard(card) {
     $('edError').textContent = '';
+    $('cbError').textContent = '';
     cardInfo[card.card_code] = card;
     const existing = deckCards.find(r => r.card_code === card.card_code);
     const error = existing
@@ -372,9 +450,9 @@
           .eq('deck_id', deck.id).eq('card_code', card.card_code)).error
       : (await window.sb.from('deck_cards')
           .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1 })).error;
-    if (error) { $('edError').textContent = error.message; return; } // trigger messages: color/copies/banned
+    if (error) { $('cbError').textContent = error.message; return; } // trigger messages: copies/bans/pairs
     await reloadDeckCards();
-    searchPool(); // refresh "+1 (n)" labels
+    loadBrowser(); // refresh the xN markers
   }
 
   async function refreshValidity() {
@@ -463,7 +541,7 @@
     }
     deck.format = btn.dataset.value;
     refreshValidity();
-    searchPool(); // pool legality changes with the format
+    if ($('cbOverlay').style.display !== 'none') loadBrowser(); // legality changed
   }
 
   async function renameDeck() {
