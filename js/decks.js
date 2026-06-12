@@ -78,6 +78,10 @@
     $('edFormat').addEventListener('click', onFormatClick);
     $('edListingType').addEventListener('click', onListingTypeClick);
 
+    // Deep-link / refresh restore: ?deck=<id> reopens that deck's editor.
+    const deepLink = new URLSearchParams(location.search).get('deck');
+    if (deepLink) { openDeck(deepLink); return; }
+
     $('decksWrap').style.display = '';
     loadDecks();
   }
@@ -183,6 +187,7 @@
   // ---------------- deck editor ----------------
 
   function showList() {
+    history.replaceState(null, '', 'decks.html');
     $('editorWrap').style.display = 'none';
     $('decksWrap').style.display = '';
     deck = null;
@@ -191,8 +196,9 @@
 
   async function openDeck(deckId) {
     const { data: d, error } = await window.sb.from('decks').select('*').eq('id', deckId).single();
-    if (error || !d) return;
+    if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
     deck = d;
+    history.replaceState(null, '', `decks.html?deck=${d.id}`); // survives hard refresh
     const { data: L } = await window.sb
       .from('cards').select('card_code,name,color,image_url,image_url_lg')
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
