@@ -60,11 +60,11 @@
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBrowser(); });
-    ['cbSeries', 'cbType', 'cbCost', 'cbAttribute', 'cbRarity'].forEach(id =>
+    ['cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
     $('cbClear').addEventListener('click', () => {
-      ['cbName', 'cbSeries', 'cbType', 'cbCost', 'cbAttribute', 'cbRarity'].forEach(id => { $(id).value = ''; });
+      ['cbName', 'cbSeries', 'cbType', 'cbCost', 'cbAbility', 'cbCounter', 'cbRarity'].forEach(id => { $(id).value = ''; });
       loadBrowser();
     });
     $('edDeckName').addEventListener('change', renameDeck);
@@ -391,7 +391,8 @@
     });
     fill('cbType', ['CHARACTER', 'EVENT', 'STAGE']);
     fill('cbCost', Array.from({ length: 11 }, (_, i) => i));
-    fill('cbAttribute', ['Slash', 'Strike', 'Special', 'Wisdom', 'Ranged']);
+    fill('cbAbility', ['Blocker', 'Rush', 'Searcher']);
+    fill('cbCounter', ['1000', '2000', 'None']);
     fill('cbRarity', ['C', 'UC', 'R', 'SR', 'SEC', 'P']);
   }
 
@@ -412,7 +413,15 @@
     if ($('cbSeries').value) q = q.eq('series', $('cbSeries').value);
     if ($('cbType').value) q = q.eq('type', $('cbType').value);
     if ($('cbCost').value !== '') q = q.eq('cost', Number($('cbCost').value));
-    if ($('cbAttribute').value) q = q.eq('attribute', $('cbAttribute').value);
+    // Ability filters key off effect-text conventions: [Blocker] / [Rush]
+    // keywords; searchers phrase as "look at … top of your deck … add … hand".
+    const ability = $('cbAbility').value;
+    if (ability === 'Blocker') q = q.ilike('effect_text', '%[Blocker]%');
+    else if (ability === 'Rush') q = q.ilike('effect_text', '%[Rush]%');
+    else if (ability === 'Searcher') q = q.ilike('effect_text', '%look at%top of your deck%').ilike('effect_text', '%add%hand%');
+    const counter = $('cbCounter').value;
+    if (counter === 'None') q = q.is('counter', null);
+    else if (counter) q = q.eq('counter', Number(counter));
     if ($('cbRarity').value) q = q.eq('rarity', $('cbRarity').value);
     if (colorOr) q = q.or(colorOr);
     const { data, error } = await q;
