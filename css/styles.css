@@ -2384,8 +2384,7 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
 .locked-pill a { color: var(--accent); }
 
 /* ---- Nav: Locals icon + "My Collection" dropdown ---- */
-.nav-ico { vertical-align: -1px; margin-right: 0.4rem; }
-.nav-caret { vertical-align: -1px; margin-left: 0.25rem; }
+.nav-ico { vertical-align: -1px; margin-left: 0.45rem; }
 .nav-dd-wrap { position: relative; }
 .nav-dd-btn {
   font-family: var(--font-serif);
@@ -2420,8 +2419,8 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
   left: 50%;
   transform: translateX(-50%);
   min-width: 160px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-accent);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   display: none;
   flex-direction: column;
   z-index: 1100;
@@ -2436,9 +2435,9 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
   margin-left: -5px;
   width: 10px;
   height: 10px;
-  background: var(--bg-card);
-  border-left: 1px solid var(--border-accent);
-  border-top: 1px solid var(--border-accent);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   transform: rotate(45deg);
 }
 .nav-links .nav-dd a {
@@ -2452,13 +2451,12 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
 .nav-links .nav-dd a::after { content: none; }
 .nav-links .nav-dd a:hover,
 .nav-links .nav-dd a.active {
-  color: var(--accent);
+  color: var(--text-primary);
   background: var(--bg-card-hover);
 }
 
 /* mobile drawer flavors */
-.nav-mobile .nav-ico { width: 20px; height: 20px; margin-right: 0.6rem; }
-.nav-mobile .nav-caret { width: 16px; height: 16px; margin-left: 0.4rem; }
+.nav-mobile .nav-ico { width: 20px; height: 20px; margin-left: 0.6rem; }
 .nav-mobile-group {
   font-family: var(--font-serif);
   font-size: 2rem;
