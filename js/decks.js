@@ -59,7 +59,11 @@
     $('poolSearch').addEventListener('input', debounce(searchPool, 250));
     $('edDeckName').addEventListener('change', renameDeck);
     $('edWishlistBtn').addEventListener('click', pushMissingToWishlist);
-    $('edPublishBtn').addEventListener('click', togglePublish);
+    $('edEyeBtn').addEventListener('click', onEyeClick);
+    $('edFlair').addEventListener('click', () => { // switch type on a public deck
+      const opts = $('edPublishOpts');
+      opts.style.display = opts.style.display === 'none' ? '' : 'none';
+    });
     $('edDeleteBtn').addEventListener('click', deleteDeck);
     document.querySelectorAll('.pill-choice').forEach(group => {
       group.addEventListener('click', e => {
@@ -201,6 +205,7 @@
     setPill('edFormat', d.format || 'standard');
     $('poolSearch').value = '';
     $('edPoolList').innerHTML = '';
+    $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
     await reloadDeckCards();
   }
@@ -229,9 +234,6 @@
       return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
     });
 
-    if (sorted.length === 0) {
-      list.innerHTML = '<li style="opacity:.6;padding:.6rem .35rem;">No cards yet — search below to start adding.</li>';
-    }
     sorted.forEach(r => {
       const c = cardInfo[r.card_code] || {};
       const li = document.createElement('li');
@@ -355,37 +357,60 @@
     const badges = [];
     badges.push(v.valid ? '<span class="deck-badge ok">deck valid</span>' : '<span class="deck-badge bad">not valid yet</span>');
     if (v.owned_complete) badges.push('<span class="deck-badge ok">fully owned</span>');
-    if (deck.is_public) badges.push(`<span class="deck-badge pub">public · ${esc(deck.listing_type || '')}</span>`);
     $('edBadges').innerHTML = badges.join(' ');
 
     const probs = Array.isArray(v.problems) ? v.problems : [];
     $('edProblems').innerHTML = probs.map(p => `<li>${esc(p)}</li>`).join('');
 
-    // Publish row: only meaningful when valid + fully owned (server re-checks).
-    // Listing-type pills are pickable only while the deck is public.
-    $('edPublishBtn').textContent = deck.is_public ? 'Unpublish' : 'Make Public';
-    $('edPublishBtn').disabled = !deck.is_public && !(v.valid && v.owned_complete);
-    setListingPills();
+    syncPublishUi(v.valid && v.owned_complete);
     $('edWishlistBtn').disabled = (v.missing_cards ?? 0) === 0;
   }
 
-  function setListingPills() {
-    const isPub = !!deck?.is_public;
+  // Eye button + flair pill next to the deck name own the publish state.
+  function syncPublishUi(publishable) {
+    const eye = $('edEyeBtn'), flair = $('edFlair');
+    if (deck.is_public) {
+      eye.classList.add('public');
+      eye.disabled = false;
+      eye.title = 'Public — click to unpublish';
+      flair.textContent = deck.listing_type || 'public';
+      flair.style.display = '';
+    } else {
+      eye.classList.remove('public');
+      eye.disabled = !publishable;
+      eye.title = publishable ? 'Make deck public' : 'Deck must be valid and fully owned to go public';
+      flair.style.display = 'none';
+      if (eye.disabled) $('edPublishOpts').style.display = 'none';
+    }
     document.querySelectorAll('#edListingType .pill-choice-btn').forEach(b => {
-      b.disabled = !isPub;
-      b.classList.toggle('active', isPub && b.dataset.value === deck.listing_type);
+      b.classList.toggle('active', deck.is_public && b.dataset.value === deck.listing_type);
     });
   }
 
-  // Clicking a listing-type pill on a public deck re-publishes with that type
-  // (publish_deck re-validates server-side).
+  // Eye: private -> reveal the trade/sell/borrow options; public -> unpublish.
+  async function onEyeClick() {
+    $('edError').textContent = '';
+    if (!deck.is_public) {
+      const opts = $('edPublishOpts');
+      opts.style.display = opts.style.display === 'none' ? '' : 'none';
+      return;
+    }
+    const { error } = await window.sb.rpc('unpublish_deck', { p_deck_id: deck.id });
+    if (error) { $('edError').textContent = error.message; return; }
+    deck.is_public = false; deck.listing_type = null;
+    $('edPublishOpts').style.display = 'none';
+    refreshValidity();
+  }
+
+  // Picking a type publishes (or re-publishes) with it; server re-validates.
   async function onListingTypeClick(e) {
     const btn = e.target.closest('.pill-choice-btn');
-    if (!btn || btn.disabled || !deck?.is_public || btn.dataset.value === deck.listing_type) return;
+    if (!btn || (deck.is_public && btn.dataset.value === deck.listing_type)) return;
     $('edError').textContent = '';
     const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: btn.dataset.value });
-    if (error) { setListingPills(); $('edError').textContent = error.message; return; }
-    deck.listing_type = btn.dataset.value;
+    if (error) { $('edError').textContent = error.message; refreshValidity(); return; }
+    deck.is_public = true; deck.listing_type = btn.dataset.value;
+    $('edPublishOpts').style.display = 'none';
     refreshValidity();
   }
 
@@ -419,21 +444,6 @@
     if (error) { $('edError').textContent = error.message; return; }
     $('edWishlistBtn').textContent = `Missing → Wishlist ✓ (${data} card${data === 1 ? '' : 's'})`;
     setTimeout(() => { $('edWishlistBtn').textContent = 'Missing → Wishlist'; }, 2500);
-  }
-
-  async function togglePublish() {
-    $('edError').textContent = '';
-    if (deck.is_public) {
-      const { error } = await window.sb.rpc('unpublish_deck', { p_deck_id: deck.id });
-      if (error) { $('edError').textContent = error.message; return; }
-      deck.is_public = false; deck.listing_type = null;
-    } else {
-      // Publishes as 'trade' by default; the pills unlock for switching after.
-      const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: 'trade' });
-      if (error) { $('edError').textContent = error.message; return; }
-      deck.is_public = true; deck.listing_type = 'trade';
-    }
-    refreshValidity();
   }
 
   async function deleteDeck() {

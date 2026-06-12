@@ -50,8 +50,17 @@
     .leader-results img { width:38px; aspect-ratio:.72; object-fit:cover; border-radius:4px; }
     .deck-section-title { font-family:Cinzel, serif; font-size:.9rem; letter-spacing:.06em; text-transform:uppercase; opacity:.85; margin:1.4rem 0 .4rem; }
     .deck-toolbar { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-top:1rem; }
-    .btn-quiet { font-size:.68rem; padding:.4rem .9rem; opacity:.7; }
-    .btn-quiet:hover { opacity:1; }
+    .name-row { display:flex; gap:.5rem; align-items:center; }
+    .name-row .form-input { flex:1; min-width:0; }
+    .eye-btn { width:34px; height:34px; flex:none; border-radius:8px; border:1px solid var(--border,#3a3344); background:transparent; color:inherit; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; opacity:.7; transition:opacity .15s; padding:0; }
+    .eye-btn:hover { opacity:1; }
+    .eye-btn:disabled { opacity:.3; cursor:default; }
+    .eye-btn svg { width:18px; height:18px; }
+    .eye-btn .eye-on { display:none; }
+    .eye-btn.public { border-color:#7ec96a; color:#7ec96a; opacity:1; }
+    .eye-btn.public .eye-on { display:block; }
+    .eye-btn.public .eye-off { display:none; }
+    .deck-flair { cursor:pointer; flex:none; }
   </style>
 </head>
 <body>
@@ -162,7 +171,21 @@
           <div class="deck-side">
             <img id="edLeaderImg" alt="Leader">
             <div class="form-group" style="margin-top:1rem;">
-              <input class="form-input" type="text" id="edDeckName" maxlength="60">
+              <div class="name-row">
+                <input class="form-input" type="text" id="edDeckName" maxlength="60">
+                <button class="eye-btn" id="edEyeBtn" type="button" title="Make deck public" aria-label="Toggle deck visibility">
+                  <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.4 10.4 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.9 9.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                  <svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <span class="deck-badge pub deck-flair" id="edFlair" style="display:none;" title="Change listing type"></span>
+              </div>
+            </div>
+            <div class="deck-toolbar" id="edPublishOpts" style="display:none; margin-top:.5rem;">
+              <div class="pill-choice" id="edListingType">
+                <button type="button" class="pill-choice-btn" data-value="trade">Trade</button>
+                <button type="button" class="pill-choice-btn" data-value="sell">Sell</button>
+                <button type="button" class="pill-choice-btn" data-value="borrow">Borrow</button>
+              </div>
             </div>
             <div class="deck-toolbar" style="margin-top:.75rem;">
               <div class="pill-choice" id="edFormat">
@@ -177,14 +200,6 @@
 
             <div class="deck-toolbar">
               <button class="btn" id="edWishlistBtn" title="Add every missing copy to your wishlist binder">Missing → Wishlist</button>
-            </div>
-            <div class="deck-toolbar" id="edPublishRow">
-              <button class="btn btn-quiet" id="edPublishBtn">Make Public</button>
-              <div class="pill-choice" id="edListingType">
-                <button type="button" class="pill-choice-btn" data-value="trade" disabled>Trade</button>
-                <button type="button" class="pill-choice-btn" data-value="sell" disabled>Sell</button>
-                <button type="button" class="pill-choice-btn" data-value="borrow" disabled>Borrow</button>
-              </div>
             </div>
             <div class="deck-toolbar">
               <button class="btn" id="edDeleteBtn" style="color:#d98a8a;">Delete Deck</button>
