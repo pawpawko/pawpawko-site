@@ -233,6 +233,10 @@ def parse_cards(html: str) -> list[dict]:
         feature_el = dl.select_one(".feature")
         if feature_el:
             feature = re.sub(r"^Type", "", feature_el.get_text(" ", strip=True)).strip() or None
+        if feature:
+            # Source-site typo fixes: untranslated traits on the EN cardlist
+            # (e.g. base ST11-005 says 音楽 where its parallels say Music).
+            feature = feature.replace("音楽", "Music")
 
         effect = None
         text_el = dl.select_one(".text")
