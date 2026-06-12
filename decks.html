@@ -56,6 +56,14 @@
     .eye-btn.public .eye-on { display:block; }
     .eye-btn.public .eye-off { display:none; }
     .deck-flair { cursor:pointer; flex:none; }
+    .btn-sm { font-size:.68rem; padding:.4rem .9rem; }
+    .trash-btn { width:34px; height:34px; flex:none; border-radius:8px; border:1px solid var(--border,#3a3344); background:transparent; color:#d98a8a; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; opacity:.65; transition:opacity .15s; padding:0; }
+    .trash-btn:hover { opacity:1; border-color:#d98a8a; }
+    .trash-btn svg { width:16px; height:16px; }
+    .leader-wrap { position:relative; }
+    .art-btn { position:absolute; top:8px; left:8px; width:30px; height:30px; border-radius:8px; background:rgba(12,10,18,.72); border:1px solid var(--border,#3a3344); color:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; opacity:.85; padding:0; }
+    .art-btn:hover { opacity:1; }
+    .art-btn svg { width:15px; height:15px; }
     .eye-wrap { position:relative; flex:none; display:inline-flex; }
     .eye-tip { position:absolute; top:calc(100% + 8px); right:0; width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; z-index:50; display:none; pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,.4); }
     .eye-wrap:hover .eye-tip { display:block; }
@@ -186,7 +194,12 @@
         <div class="deck-editor">
           <!-- left: leader + status -->
           <div class="deck-side">
-            <img id="edLeaderImg" alt="Leader">
+            <div class="leader-wrap">
+              <img id="edLeaderImg" alt="Leader">
+              <button class="art-btn" id="edArtBtn" type="button" title="Swap leader art" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
             <div class="form-group" style="margin-top:1rem;">
               <div class="name-row">
                 <input class="form-input" type="text" id="edDeckName" maxlength="60">
@@ -212,6 +225,9 @@
                 <button type="button" class="pill-choice-btn" data-value="standard">Standard</button>
                 <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
               </div>
+              <button class="trash-btn" id="edDeleteBtn" type="button" title="Delete deck" aria-label="Delete deck">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              </button>
             </div>
             <div id="edCounts" class="text-muted-line"></div>
             <div class="count-bar"><div id="edCountFill" style="width:0%"></div></div>
@@ -224,8 +240,9 @@
           <div>
             <div class="deck-cards-grid" id="edDeckGrid"></div>
             <div class="deck-card-edit" id="edCardEdit" style="display:none;"></div>
-            <button class="btn" id="edAddBtn" style="width:100%; text-align:center;">+ Add Cards</button>
-            <button class="btn" id="edDeleteBtn" style="width:100%; text-align:center; color:#d98a8a; margin-top:.75rem;">Delete Deck</button>
+            <div style="display:flex; justify-content:flex-end;">
+              <button class="btn btn-sm" id="edAddBtn">+ Add Cards</button>
+            </div>
           </div>
         </div>
       </div>

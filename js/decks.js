@@ -19,7 +19,10 @@
 
   let user = null;
   let deck = null;            // current decks row
-  let leaderCard = null;      // cards row for the leader
+  let leaderCard = null;      // cards row for the leader (base print)
+  let leaderArts = [];        // base + _p alt-art prints of the leader
+  let artIdx = 0;             // current art (persisted per deck in localStorage)
+  const artKey = (deckId) => `pawpaw:deckArt:${deckId}`;
   let deckCards = [];         // deck_cards rows
   let cardInfo = {};          // card_code -> cards row
   let exceptions = {};        // card_code -> max_copies (null = unlimited, 0 = banned)
@@ -68,6 +71,7 @@
       loadBrowser();
     });
     $('edDeckName').addEventListener('change', renameDeck);
+    $('edArtBtn').addEventListener('click', cycleLeaderArt);
     $('edEyeBtn').addEventListener('click', onEyeClick);
     $('edFlair').addEventListener('click', () => { // switch type on a public deck
       const opts = $('edPublishOpts');
@@ -113,7 +117,8 @@
     }
     $('decksCount').textContent = `${decks.length} deck${decks.length === 1 ? '' : 's'}`;
 
-    const codes = decks.map(d => d.leader_card_code);
+    const artOf = (d) => localStorage.getItem(artKey(d.id));
+    const codes = [...new Set(decks.flatMap(d => [d.leader_card_code, artOf(d)].filter(Boolean)))];
     const { data: leaders } = await window.sb
       .from('cards').select('card_code,name,color,image_url').eq('game', GAME).in('card_code', codes);
     const leaderMap = {};
@@ -124,7 +129,7 @@
       window.sb.rpc('deck_validity', { p_deck_id: d.id }).then(r => r.data).catch(() => null)));
 
     decks.forEach((d, i) => {
-      const L = leaderMap[d.leader_card_code] || {};
+      const L = leaderMap[artOf(d)] || leaderMap[d.leader_card_code] || {};
       const v = validity[i] || {};
       const li = document.createElement('li');
       li.className = 'deck-tile';
@@ -213,14 +218,37 @@
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
     leaderCard = L;
 
+    // Alt arts: the base print plus its _p variants (same card number).
+    const { data: arts } = await window.sb
+      .from('cards').select('card_code,image_url,image_url_lg')
+      .eq('game', GAME).like('card_code', d.leader_card_code + '%');
+    const artRe = new RegExp(`^${d.leader_card_code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
+    leaderArts = (arts || []).filter(c => artRe.test(c.card_code))
+      .sort((a, b) => a.card_code.localeCompare(b.card_code));
+    const savedArt = localStorage.getItem(artKey(d.id));
+    artIdx = Math.max(0, leaderArts.findIndex(c => c.card_code === savedArt));
+    $('edArtBtn').style.display = leaderArts.length > 1 ? '' : 'none';
+    applyLeaderArt();
+
     $('decksWrap').style.display = 'none';
     $('editorWrap').style.display = '';
-    $('edLeaderImg').src = L?.image_url_lg || L?.image_url || '';
     $('edDeckName').value = d.name;
     setPill('edFormat', d.format || 'standard');
     $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
     await reloadDeckCards();
+  }
+
+  function applyLeaderArt() {
+    const art = leaderArts[artIdx] || leaderCard || {};
+    $('edLeaderImg').src = art.image_url_lg || art.image_url || '';
+  }
+
+  function cycleLeaderArt() {
+    if (leaderArts.length < 2 || !deck) return;
+    artIdx = (artIdx + 1) % leaderArts.length;
+    localStorage.setItem(artKey(deck.id), leaderArts[artIdx].card_code);
+    applyLeaderArt();
   }
 
   async function reloadDeckCards() {
