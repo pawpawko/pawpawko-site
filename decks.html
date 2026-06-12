@@ -86,6 +86,10 @@
     .cb-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:.85rem; margin-top:1rem; }
     @media (max-width:760px) { .cb-grid { grid-template-columns:repeat(3, minmax(0,1fr)); } }
     .cb-in-deck { color:#7ec96a; }
+    .cb-trait-wrap { position:relative; }
+    .cb-trait-list { list-style:none; margin:0; padding:0; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow:auto; background:var(--bg-secondary,#201c33); border:1px solid var(--border,#3a3344); border-radius:8px; z-index:60; }
+    .cb-trait-list li { padding:.45rem .7rem; font-size:.8rem; cursor:pointer; }
+    .cb-trait-list li:hover { background:var(--bg-card-hover,#322e50); }
   </style>
 </head>
 <body>
@@ -261,9 +265,10 @@
               <label class="form-label" for="cbType">Category</label>
               <select class="form-input" id="cbType"><option value="">All</option></select>
             </div>
-            <div class="filter-group">
+            <div class="filter-group cb-trait-wrap">
               <label class="form-label" for="cbTrait">Type</label>
-              <select class="form-input" id="cbTrait"><option value="">Any</option></select>
+              <input class="form-input" id="cbTrait" placeholder="e.g. FILM, Mink…" autocomplete="off">
+              <ul class="cb-trait-list" id="cbTraitList" style="display:none;"></ul>
             </div>
             <div class="filter-group">
               <label class="form-label" for="cbCost">Cost</label>

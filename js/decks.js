@@ -63,9 +63,20 @@
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBrowser(); });
-    ['cbType', 'cbTrait', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
+    ['cbType', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
+    const debouncedBrowse = debounce(loadBrowser, 250);
+    $('cbTrait').addEventListener('input', () => { renderTraitList(); debouncedBrowse(); });
+    $('cbTrait').addEventListener('focus', renderTraitList);
+    $('cbTrait').addEventListener('blur', () => setTimeout(() => { $('cbTraitList').style.display = 'none'; }, 150));
+    $('cbTraitList').addEventListener('mousedown', (e) => { // mousedown beats blur
+      const li = e.target.closest('li');
+      if (!li) return;
+      $('cbTrait').value = li.dataset.t;
+      $('cbTraitList').style.display = 'none';
+      loadBrowser();
+    });
     $('cbMore').addEventListener('click', loadMoreBrowser);
     $('cbClear').addEventListener('click', () => {
       ['cbName', 'cbType', 'cbTrait', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id => { $(id).value = ''; });
@@ -378,6 +389,7 @@
     document.body.style.overflow = 'hidden'; // the overlay scrolls, not the page
     $('cbError').textContent = '';
     if (!cbReady) { cbReady = true; populateBrowserFilters(); }
+    ensureTraitPool();
     loadBrowser();
     $('cbName').focus();
   }
@@ -388,24 +400,6 @@
   }
 
   async function populateBrowserFilters() {
-    // Distinct traits from cards.types, paginated (PostgREST 1000-row cap).
-    const traitSet = new Set();
-    let from = 0;
-    while (from < 20000) {
-      const { data, error } = await window.sb
-        .from('cards').select('types').eq('game', GAME)
-        .not('types', 'is', null).range(from, from + 999);
-      if (error || !data || data.length === 0) break;
-      data.forEach(r => (r.types || []).forEach(t => traitSet.add(t)));
-      if (data.length < 1000) break;
-      from += 1000;
-    }
-    const sel = $('cbTrait');
-    [...traitSet].sort((a, b) => a.localeCompare(b)).forEach(t => {
-      const o = document.createElement('option');
-      o.value = t; o.textContent = t;
-      sel.appendChild(o);
-    });
     const fill = (id, vals) => vals.forEach(v => {
       const o = document.createElement('option');
       o.value = String(v); o.textContent = String(v);
@@ -415,6 +409,56 @@
     fill('cbCost', Array.from({ length: 11 }, (_, i) => i));
     fill('cbAbility', ['Blocker', 'Rush', 'Searcher']);
     fill('cbCounter', ['1000', '2000', 'None']);
+  }
+
+  // Trait typeahead: suggestions come from the CURRENT deck's legal pool
+  // (leader colors, format, bans), so a trait with zero addable cards never
+  // shows up. Cached per deck+format.
+  let traitPool = [], traitPoolKey = '';
+
+  async function ensureTraitPool() {
+    const key = `${deck.id}:${deck.format}`;
+    if (traitPoolKey === key) return;
+    traitPoolKey = key;
+    traitPool = [];
+    const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
+      .map(c => `color.ilike.%${c}%`).join(',');
+    const set = new Set();
+    let from = 0;
+    while (from < 20000) {
+      let q = window.sb
+        .from('cards').select('card_code,types')
+        .eq('game', GAME).neq('type', 'LEADER').not('types', 'is', null)
+        .range(from, from + 999);
+      if (colorOr) q = q.or(colorOr);
+      const { data, error } = await q;
+      if (error || !data || data.length === 0) break;
+      data.forEach(c => {
+        if (isBase(c.card_code) && capFor(c.card_code) !== 0 &&
+            (deck.format !== 'standard' || standardLegal(c.card_code))) {
+          (c.types || []).forEach(t => set.add(t));
+        }
+      });
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    traitPool = [...set].sort((a, b) => a.localeCompare(b));
+    renderTraitList();
+  }
+
+  function renderTraitList() {
+    const list = $('cbTraitList');
+    const qv = $('cbTrait').value.trim().toLowerCase();
+    const items = traitPool.filter(t => t.toLowerCase().includes(qv)).slice(0, 50);
+    list.innerHTML = items.map(t => `<li data-t="${esc(t)}">${esc(t)}</li>`).join('');
+    list.style.display = items.length && document.activeElement === $('cbTrait') ? '' : 'none';
+  }
+
+  // The query filter only applies on an exact trait (picked or fully typed).
+  function activeTrait() {
+    const typed = $('cbTrait').value.trim();
+    if (!typed) return null;
+    return traitPool.find(t => t.toLowerCase() === typed.toLowerCase()) || null;
   }
 
   // Incremental browser: server pages of 300 feed a filtered list rendered
@@ -435,7 +479,8 @@
     if (name) q = q.or(`name.ilike.%${name}%,card_code.ilike.%${name}%`);
     if ($('cbType').value) q = q.eq('type', $('cbType').value);
     // Trait filter is inclusive: card's types array CONTAINS the pick.
-    if ($('cbTrait').value) q = q.contains('types', [$('cbTrait').value]);
+    const trait = activeTrait();
+    if (trait) q = q.contains('types', [trait]);
     if ($('cbCost').value !== '') q = q.eq('cost', Number($('cbCost').value));
     // Ability filters key off effect-text conventions: [Blocker] / [Rush]
     // keywords; searchers phrase as "look at … top of your deck … add … hand".
@@ -611,7 +656,7 @@
     }
     deck.format = btn.dataset.value;
     refreshValidity();
-    if ($('cbOverlay').style.display !== 'none') loadBrowser(); // legality changed
+    if ($('cbOverlay').style.display !== 'none') { ensureTraitPool(); loadBrowser(); } // legality changed
   }
 
   async function renameDeck() {
