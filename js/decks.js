@@ -214,6 +214,7 @@
     $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
     await reloadDeckCards();
+    searchPool(); // auto-fill the pool with the leader's legal cards
   }
 
   async function reloadDeckCards() {
@@ -303,22 +304,24 @@
   async function searchPool() {
     const q = $('poolSearch').value.trim();
     const out = $('edPoolList');
-    if (q.length < 2 || !leaderCard) { out.innerHTML = ''; return; }
+    if (!leaderCard) { out.innerHTML = ''; return; }
     // Legal pool: same game, non-Leader, sharing >=1 color with the leader.
+    // Shown automatically (newest first) — searching just narrows it. Rotated
+    // cards only ever appear when the deck's format is Eternal.
     const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
       .map(c => `color.ilike.%${c}%`).join(',');
     let query = window.sb
       .from('cards')
       .select('card_code,name,color,cost,type,image_url')
       .eq('game', GAME).neq('type', 'LEADER')
-      .or(`name.ilike.%${q}%,card_code.ilike.%${q}%`)
       .order('release_order', { ascending: false })
-      .limit(80);
+      .limit(120);
+    if (q) query = query.or(`name.ilike.%${q}%,card_code.ilike.%${q}%`);
     if (colorOr) query = query.or(colorOr);
     const { data } = await query;
     const rows = (data || []).filter(c =>
       isBase(c.card_code) && capFor(c.card_code) !== 0 &&
-      (deck.format !== 'standard' || standardLegal(c.card_code))).slice(0, 25);
+      (deck.format !== 'standard' || standardLegal(c.card_code))).slice(0, 30);
     out.innerHTML = rows.length ? '' : '<li style="opacity:.6;padding:.6rem .35rem;">No legal cards match.</li>';
     rows.forEach(c => {
       const inDeck = deckCards.find(r => r.card_code === c.card_code);
