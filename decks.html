@@ -50,6 +50,8 @@
     .leader-results img { width:38px; aspect-ratio:.72; object-fit:cover; border-radius:4px; }
     .deck-section-title { font-family:Cinzel, serif; font-size:.9rem; letter-spacing:.06em; text-transform:uppercase; opacity:.85; margin:1.4rem 0 .4rem; }
     .deck-toolbar { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-top:1rem; }
+    .btn-quiet { font-size:.68rem; padding:.4rem .9rem; opacity:.7; }
+    .btn-quiet:hover { opacity:1; }
   </style>
 </head>
 <body>
@@ -162,7 +164,7 @@
             <div class="form-group" style="margin-top:1rem;">
               <input class="form-input" type="text" id="edDeckName" maxlength="60">
             </div>
-            <div class="deck-toolbar" style="margin-top:0;">
+            <div class="deck-toolbar" style="margin-top:.75rem;">
               <div class="pill-choice" id="edFormat">
                 <button type="button" class="pill-choice-btn" data-value="standard">Standard</button>
                 <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
@@ -177,12 +179,12 @@
               <button class="btn" id="edWishlistBtn" title="Add every missing copy to your wishlist binder">Missing → Wishlist</button>
             </div>
             <div class="deck-toolbar" id="edPublishRow">
+              <button class="btn btn-quiet" id="edPublishBtn">Make Public</button>
               <div class="pill-choice" id="edListingType">
-                <button type="button" class="pill-choice-btn active" data-value="trade">Trade</button>
-                <button type="button" class="pill-choice-btn" data-value="sell">Sell</button>
-                <button type="button" class="pill-choice-btn" data-value="borrow">Borrow</button>
+                <button type="button" class="pill-choice-btn" data-value="trade" disabled>Trade</button>
+                <button type="button" class="pill-choice-btn" data-value="sell" disabled>Sell</button>
+                <button type="button" class="pill-choice-btn" data-value="borrow" disabled>Borrow</button>
               </div>
-              <button class="btn btn-filled" id="edPublishBtn">Make Public</button>
             </div>
             <div class="deck-toolbar">
               <button class="btn" id="edDeleteBtn" style="color:#d98a8a;">Delete Deck</button>
@@ -192,12 +194,11 @@
 
           <!-- right: deck contents + card pool -->
           <div>
-            <div class="deck-section-title">Deck (<span id="edDeckTotal">0</span>/50)</div>
             <ul class="deck-list" id="edDeckList"></ul>
 
-            <div class="deck-section-title">Add Cards <span class="text-muted-line" id="edPoolHint"></span></div>
+            <div class="deck-section-title">Add Cards</div>
             <div class="form-group">
-              <input class="form-input" type="text" id="poolSearch" placeholder="Search legal cards by name or code…" autocomplete="off">
+              <input class="form-input" type="text" id="poolSearch" placeholder="Search cards by name or code" autocomplete="off">
             </div>
             <ul class="pool-list" id="edPoolList"></ul>
           </div>

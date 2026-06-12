@@ -72,6 +72,7 @@
     // Registered after the generic toggler so these read the new selection.
     $('ndFormat').addEventListener('click', () => searchLeaders());
     $('edFormat').addEventListener('click', onFormatClick);
+    $('edListingType').addEventListener('click', onListingTypeClick);
 
     $('decksWrap').style.display = '';
     loadDecks();
@@ -198,7 +199,6 @@
     $('edLeaderImg').src = L?.image_url_lg || L?.image_url || '';
     $('edDeckName').value = d.name;
     setPill('edFormat', d.format || 'standard');
-    $('edPoolHint').textContent = `— legal for ${L?.color || ''} (${L?.name || ''})`;
     $('poolSearch').value = '';
     $('edPoolList').innerHTML = '';
     $('edError').textContent = '';
@@ -223,8 +223,6 @@
   function renderDeck() {
     const list = $('edDeckList');
     list.innerHTML = '';
-    const total = deckCards.reduce((s, r) => s + r.quantity, 0);
-    $('edDeckTotal').textContent = total;
 
     const sorted = deckCards.slice().sort((a, b) => {
       const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
@@ -363,10 +361,32 @@
     const probs = Array.isArray(v.problems) ? v.problems : [];
     $('edProblems').innerHTML = probs.map(p => `<li>${esc(p)}</li>`).join('');
 
-    // Publish row: only meaningful when valid + fully owned (server re-checks)
+    // Publish row: only meaningful when valid + fully owned (server re-checks).
+    // Listing-type pills are pickable only while the deck is public.
     $('edPublishBtn').textContent = deck.is_public ? 'Unpublish' : 'Make Public';
     $('edPublishBtn').disabled = !deck.is_public && !(v.valid && v.owned_complete);
+    setListingPills();
     $('edWishlistBtn').disabled = (v.missing_cards ?? 0) === 0;
+  }
+
+  function setListingPills() {
+    const isPub = !!deck?.is_public;
+    document.querySelectorAll('#edListingType .pill-choice-btn').forEach(b => {
+      b.disabled = !isPub;
+      b.classList.toggle('active', isPub && b.dataset.value === deck.listing_type);
+    });
+  }
+
+  // Clicking a listing-type pill on a public deck re-publishes with that type
+  // (publish_deck re-validates server-side).
+  async function onListingTypeClick(e) {
+    const btn = e.target.closest('.pill-choice-btn');
+    if (!btn || btn.disabled || !deck?.is_public || btn.dataset.value === deck.listing_type) return;
+    $('edError').textContent = '';
+    const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: btn.dataset.value });
+    if (error) { setListingPills(); $('edError').textContent = error.message; return; }
+    deck.listing_type = btn.dataset.value;
+    refreshValidity();
   }
 
   async function onFormatClick(e) {
@@ -408,11 +428,10 @@
       if (error) { $('edError').textContent = error.message; return; }
       deck.is_public = false; deck.listing_type = null;
     } else {
-      const active = document.querySelector('#edListingType .pill-choice-btn.active');
-      const lt = active ? active.dataset.value : 'trade';
-      const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: lt });
+      // Publishes as 'trade' by default; the pills unlock for switching after.
+      const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: 'trade' });
       if (error) { $('edError').textContent = error.message; return; }
-      deck.is_public = true; deck.listing_type = lt;
+      deck.is_public = true; deck.listing_type = 'trade';
     }
     refreshValidity();
   }
