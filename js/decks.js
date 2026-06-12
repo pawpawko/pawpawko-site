@@ -361,20 +361,19 @@
     fill.classList.toggle('over', total > 50);
 
     const badges = [];
-    badges.push(v.valid ? '<span class="deck-badge ok">deck valid</span>' : '<span class="deck-badge bad">not valid yet</span>');
+    if (v.valid) badges.push('<span class="deck-badge ok">deck valid</span>');
     if (v.owned_complete) badges.push('<span class="deck-badge ok">fully owned</span>');
     $('edBadges').innerHTML = badges.join(' ');
 
-    const probs = Array.isArray(v.problems) ? v.problems : [];
-    $('edProblems').innerHTML = probs.map(p => `<li>${esc(p)}</li>`).join('');
-
-    syncPublishUi(v.valid && v.owned_complete);
+    syncPublishUi(v);
     $('edWishlistBtn').disabled = (v.missing_cards ?? 0) === 0;
   }
 
   // Eye button + flair pill next to the deck name own the publish state.
-  function syncPublishUi(publishable) {
+  // Why-not-publishable lives in the eye's hover tooltip.
+  function syncPublishUi(v) {
     const eye = $('edEyeBtn'), flair = $('edFlair');
+    const publishable = !!(v.valid && v.owned_complete);
     if (deck.is_public) {
       eye.classList.add('public');
       eye.disabled = false;
@@ -382,9 +381,14 @@
       flair.textContent = deck.listing_type || 'public';
       flair.style.display = '';
     } else {
+      const reasons = Array.isArray(v.problems) ? v.problems.slice() : [];
+      if (v.valid && !v.owned_complete) {
+        reasons.push(`${v.missing_cards} card${v.missing_cards === 1 ? '' : 's'} not owned yet`);
+      }
       eye.classList.remove('public');
       eye.disabled = !publishable;
-      eye.title = publishable ? 'Make deck public' : 'Deck must be valid and fully owned to go public';
+      eye.title = publishable ? 'Make deck public'
+                              : `Not ready to publish — ${reasons.join(' · ')}`;
       flair.style.display = 'none';
       if (eye.disabled) $('edPublishOpts').style.display = 'none';
     }
