@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decks — Pawpaw Ko</title>
+  <link rel="icon" href="images/favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&x.expires_at&&x.expires_at*1000>Date.now())document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+  <style>
+    /* Deck-builder-specific layout (everything else reuses styles.css) */
+    .deck-grid { list-style:none; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:1.25rem; }
+    .deck-tile { border:1px solid var(--border, #3a3344); border-radius:10px; overflow:hidden; background:rgba(255,255,255,0.03); }
+    .deck-tile a { display:block; text-decoration:none; color:inherit; }
+    .deck-tile img { width:100%; aspect-ratio:.72; object-fit:cover; display:block; }
+    .deck-tile-body { padding:.7rem .85rem 0.9rem; }
+    .deck-tile-name { font-family:Cinzel, serif; font-size:.95rem; margin-bottom:.3rem; }
+    .deck-tile-meta { font-size:.78rem; opacity:.75; display:flex; gap:.5rem; flex-wrap:wrap; }
+    .deck-badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:.05rem .55rem; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; }
+    .deck-badge.ok    { color:#7ec96a; }
+    .deck-badge.bad   { color:#d98a8a; }
+    .deck-badge.pub   { color:#ddb896; }
+    .deck-badge.etern { color:#b07cc6; }
+    .deck-editor { display:grid; grid-template-columns: 290px 1fr; gap:1.75rem; align-items:start; }
+    @media (max-width: 860px) { .deck-editor { grid-template-columns: 1fr; } }
+    .deck-side img { width:100%; border-radius:10px; }
+    .count-bar { height:10px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; margin:.5rem 0 .25rem; }
+    .count-bar > div { height:100%; background:#7ec96a; transition:width .25s; }
+    .count-bar > div.over { background:#d98a8a; }
+    .deck-problems { font-size:.82rem; color:#d98a8a; margin:.4rem 0 0; padding-left:1.1rem; }
+    .deck-list, .pool-list { list-style:none; padding:0; margin:0; }
+    .deck-row, .pool-row { display:flex; align-items:center; gap:.75rem; padding:.45rem .35rem; border-bottom:1px solid rgba(255,255,255,.07); }
+    .deck-row img, .pool-row img { width:42px; aspect-ratio:.72; object-fit:cover; border-radius:4px; flex:none; }
+    .row-main { flex:1; min-width:0; }
+    .row-name { font-size:.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .row-sub  { font-size:.72rem; opacity:.65; }
+    .stepper { display:flex; align-items:center; gap:.35rem; flex:none; }
+    .stepper button { width:24px; height:24px; border-radius:6px; border:1px solid var(--border,#3a3344); background:transparent; color:inherit; cursor:pointer; line-height:1; }
+    .stepper button:disabled { opacity:.3; cursor:default; }
+    .stepper .val { min-width:1.4rem; text-align:center; font-size:.85rem; }
+    .stepper-label { font-size:.6rem; letter-spacing:.05em; opacity:.6; text-transform:uppercase; display:block; text-align:center; }
+    .owned-full .val { color:#7ec96a; }
+    .pool-row .add-btn { flex:none; }
+    .leader-results { list-style:none; padding:0; margin:.5rem 0 0; max-height:380px; overflow:auto; border:1px solid var(--border,#3a3344); border-radius:8px; }
+    .leader-results li { display:flex; gap:.7rem; align-items:center; padding:.45rem .6rem; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.06); }
+    .leader-results li:hover { background:rgba(255,255,255,.05); }
+    .leader-results img { width:38px; aspect-ratio:.72; object-fit:cover; border-radius:4px; }
+    .deck-section-title { font-family:Cinzel, serif; font-size:.9rem; letter-spacing:.06em; text-transform:uppercase; opacity:.85; margin:1.4rem 0 .4rem; }
+    .deck-toolbar { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-top:1rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="index.html" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="trades.html">Binders</a></li>
+          <li><a href="decks.html" class="active">Decks</a></li>
+          <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
+          <li><a href="qa.html">FAQ</a></li>
+          <!-- hidden-tab: <li><a href="contact.html">Contact</a></li> -->
+        </ul>
+        <div class="nav-auth" id="navAuth">
+          <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
+          <div class="nav-profile-wrap">
+            <button class="nav-profile-icon" id="navProfileBtn" aria-label="Profile menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-10 2.2-10 6.5V22h20v-1.5c0-4.3-5.6-6.5-10-6.5Z"/></svg>
+            </button>
+            <div class="nav-profile-dropdown" id="navProfileDropdown" role="menu">
+              <a href="account.html" class="nav-profile-menu-item" role="menuitem">Profile</a>
+              <a href="my-binders.html" class="nav-profile-menu-item" role="menuitem">My Binders</a>
+              <a href="decks.html" class="nav-profile-menu-item" role="menuitem">Decks</a>
+              <div class="nav-profile-divider"></div>
+              <button class="nav-profile-menu-item" id="navProfileSignOut" role="menuitem">Log Out</button>
+            </div>
+          </div>
+        </div>
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <nav class="nav-mobile" id="navMobile">
+    <button class="nav-close" id="navClose">✕</button>
+    <a href="index.html">Home</a>
+    <a href="trades.html">Binders</a>
+    <a href="decks.html">Decks</a>
+    <!-- hidden-tab: <a href="gallery.html">Events</a> -->
+    <a href="qa.html">FAQ</a>
+    <!-- hidden-tab: <a href="contact.html">Contact</a> -->
+    <a href="account.html" id="mobileAuthLink">Account</a>
+  </nav>
+
+  <section class="section" style="padding-top: 8rem;">
+    <div class="container container-wide">
+      <div id="setupNotice"></div>
+
+      <div id="needsAuth" style="display:none;" class="notice notice-warn">
+        You must <a href="account.html">sign in</a> to build decks.
+      </div>
+
+      <!-- ============ DECK LIST VIEW ============ -->
+      <div id="decksWrap" style="display:none;">
+        <div class="my-binders-header">
+          <div>
+            <h2>My Decks</h2>
+            <p class="text-muted-line" id="decksCount"></p>
+          </div>
+          <button class="btn btn-filled" id="newDeckBtn">+ New Deck</button>
+        </div>
+
+        <ul class="deck-grid" id="decksGrid"></ul>
+
+        <!-- New deck: pick a leader -->
+        <form id="newDeckForm" class="new-binder-form" style="display:none;">
+          <h3>New Deck</h3>
+          <div class="divider"></div>
+          <p class="text-muted-line">Every deck is built around one Leader — and you can only have one deck per Leader.</p>
+          <div class="form-group">
+            <label class="form-label">Format</label>
+            <div class="pill-choice" id="ndFormat">
+              <button type="button" class="pill-choice-btn active" data-value="standard">Standard</button>
+              <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
+            </div>
+            <p class="text-muted-line" style="margin-top:.35rem;">Standard follows the current rotation (Block 1 is out). Eternal allows every card ever printed, minus bans.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="leaderSearch">Search Leaders</label>
+            <input class="form-input" type="text" id="leaderSearch" placeholder="e.g. Luffy, OP01-001" autocomplete="off">
+          </div>
+          <ul class="leader-results" id="leaderResults"></ul>
+          <div style="display:flex; gap:1rem; margin-top:1.5rem;">
+            <button type="button" class="btn" id="cancelNewDeck">Cancel</button>
+          </div>
+          <p class="auth-error" id="newDeckError"></p>
+        </form>
+      </div>
+
+      <!-- ============ DECK EDITOR VIEW ============ -->
+      <div id="editorWrap" style="display:none;">
+        <button class="btn" id="backToDecks" style="margin-bottom:1.25rem;">← My Decks</button>
+
+        <div class="deck-editor">
+          <!-- left: leader + status -->
+          <div class="deck-side">
+            <img id="edLeaderImg" alt="Leader">
+            <div class="form-group" style="margin-top:1rem;">
+              <input class="form-input" type="text" id="edDeckName" maxlength="60">
+            </div>
+            <div class="deck-toolbar" style="margin-top:0;">
+              <div class="pill-choice" id="edFormat">
+                <button type="button" class="pill-choice-btn" data-value="standard">Standard</button>
+                <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
+              </div>
+            </div>
+            <div id="edCounts" class="text-muted-line"></div>
+            <div class="count-bar"><div id="edCountFill" style="width:0%"></div></div>
+            <div id="edBadges" style="margin:.5rem 0;"></div>
+            <ul class="deck-problems" id="edProblems"></ul>
+
+            <div class="deck-toolbar">
+              <button class="btn" id="edWishlistBtn" title="Add every missing copy to your wishlist binder">Missing → Wishlist</button>
+            </div>
+            <div class="deck-toolbar" id="edPublishRow">
+              <div class="pill-choice" id="edListingType">
+                <button type="button" class="pill-choice-btn active" data-value="trade">Trade</button>
+                <button type="button" class="pill-choice-btn" data-value="sell">Sell</button>
+                <button type="button" class="pill-choice-btn" data-value="borrow">Borrow</button>
+              </div>
+              <button class="btn btn-filled" id="edPublishBtn">Make Public</button>
+            </div>
+            <div class="deck-toolbar">
+              <button class="btn" id="edDeleteBtn" style="color:#d98a8a;">Delete Deck</button>
+            </div>
+            <p class="auth-error" id="edError"></p>
+          </div>
+
+          <!-- right: deck contents + card pool -->
+          <div>
+            <div class="deck-section-title">Deck (<span id="edDeckTotal">0</span>/50)</div>
+            <ul class="deck-list" id="edDeckList"></ul>
+
+            <div class="deck-section-title">Add Cards <span class="text-muted-line" id="edPoolHint"></span></div>
+            <div class="form-group">
+              <input class="form-input" type="text" id="poolSearch" placeholder="Search legal cards by name or code…" autocomplete="off">
+            </div>
+            <ul class="pool-list" id="edPoolList"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="footer-logo-img">
+      <ul class="footer-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="trades.html">Binders</a></li>
+        <li><a href="decks.html">Decks</a></li>
+        <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
+        <li><a href="qa.html">FAQ</a></li>
+        <!-- hidden-tab: <li><a href="contact.html">Contact</a></li> -->
+      </ul>
+      <p class="footer-copy">© 2026 Pawpaw Ko. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/decks.js"></script>
+</body>
+</html>
