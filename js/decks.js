@@ -267,8 +267,8 @@
       grid.appendChild(tile);
     });
 
-    // Static 5-wide grid, minimum 4 rows: pad with empty slots to a full row.
-    const padTo = Math.max(20, Math.ceil(sorted.length / 5) * 5);
+    // Static 5-wide grid, minimum 3 rows: pad with empty slots to a full row.
+    const padTo = Math.max(15, Math.ceil(sorted.length / 5) * 5);
     for (let i = sorted.length; i < padTo; i++) {
       const ph = document.createElement('div');
       ph.className = 'deck-card-tile empty-slot';

@@ -59,7 +59,6 @@
     .eye-wrap { position:relative; flex:none; display:inline-flex; }
     .eye-tip { position:absolute; top:calc(100% + 8px); right:0; width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; z-index:50; display:none; pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,.4); }
     .eye-wrap:hover .eye-tip { display:block; }
-    #edDeleteBtn { width:100%; text-align:center; }
     #edCounts { margin-top:.9rem; }
     .deck-cards-grid { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:.6rem; margin-bottom:1rem; }
     .deck-card-tile { position:relative; cursor:pointer; }
@@ -218,9 +217,6 @@
             <div class="count-bar"><div id="edCountFill" style="width:0%"></div></div>
             <div id="edBadges" style="margin:.5rem 0;"></div>
 
-            <div class="deck-toolbar">
-              <button class="btn" id="edDeleteBtn" style="color:#d98a8a;">Delete Deck</button>
-            </div>
             <p class="auth-error" id="edError"></p>
           </div>
 
@@ -229,6 +225,7 @@
             <div class="deck-cards-grid" id="edDeckGrid"></div>
             <div class="deck-card-edit" id="edCardEdit" style="display:none;"></div>
             <button class="btn" id="edAddBtn" style="width:100%; text-align:center;">+ Add Cards</button>
+            <button class="btn" id="edDeleteBtn" style="width:100%; text-align:center; color:#d98a8a; margin-top:.75rem;">Delete Deck</button>
           </div>
         </div>
       </div>
