@@ -68,7 +68,6 @@
       loadBrowser();
     });
     $('edDeckName').addEventListener('change', renameDeck);
-    $('edWishlistBtn').addEventListener('click', pushMissingToWishlist);
     $('edEyeBtn').addEventListener('click', onEyeClick);
     $('edFlair').addEventListener('click', () => { // switch type on a public deck
       const opts = $('edPublishOpts');
@@ -479,7 +478,6 @@
     $('edBadges').innerHTML = badges.join(' ');
 
     syncPublishUi(v);
-    $('edWishlistBtn').disabled = (v.missing_cards ?? 0) === 0;
   }
 
   // Eye button + flair pill next to the deck name own the publish state.
@@ -559,14 +557,6 @@
     const { error } = await window.sb.from('decks').update({ name }).eq('id', deck.id);
     if (error) $('edError').textContent = error.message;
     else deck.name = name;
-  }
-
-  async function pushMissingToWishlist() {
-    $('edError').textContent = '';
-    const { data, error } = await window.sb.rpc('push_deck_missing_to_wishlist', { p_deck_id: deck.id });
-    if (error) { $('edError').textContent = error.message; return; }
-    $('edWishlistBtn').textContent = `Missing → Wishlist ✓ (${data} card${data === 1 ? '' : 's'})`;
-    setTimeout(() => { $('edWishlistBtn').textContent = 'Missing → Wishlist'; }, 2500);
   }
 
   async function deleteDeck() {

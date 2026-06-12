@@ -502,46 +502,102 @@ begin
    where id = p_deck_id and user_id = auth.uid();
 end $$;
 
--- Push every missing copy to the user's wishlist binder for that game
--- (created if absent). One listings row per card (app invariant):
--- existing rows get deck_id + quantity bumped to the missing count.
--- Returns the number of cards pushed.
-create or replace function public.push_deck_missing_to_wishlist(p_deck_id uuid)
-returns int language plpgsql as $$
+-- Wishlist sync is AUTOMATIC: deck cards with owned < quantity mirror into
+-- the game's wishlist binder (created if absent) with quantity = missing;
+-- fully-owned or removed cards drop their deck-claimed wishlist row. One
+-- listings row per card per binder (app invariant) — an existing manual row
+-- for the same card gets claimed (deck_id set) rather than duplicated.
+-- The old manual push RPC is retired.
+drop function if exists public.push_deck_missing_to_wishlist(uuid);
+
+create or replace function public.deck_cards_sync_wishlist()
+returns trigger language plpgsql as $$
 declare
-  v_deck public.decks%rowtype;
-  v_binder uuid;
-  v_n int := 0;
-  r record;
+  v_deck    public.decks%rowtype;
+  v_code    text;
+  v_missing int;
+  v_binder  uuid;
 begin
-  select * into v_deck from public.decks where id = p_deck_id and user_id = auth.uid();
-  if not found then raise exception 'not your deck'; end if;
+  select * into v_deck from public.decks
+   where id = coalesce(new.deck_id, old.deck_id);
+  if not found then return coalesce(new, old); end if;  -- deck mid-cascade-delete
+
+  v_code := coalesce(new.card_code, old.card_code);
+  v_missing := case when tg_op = 'DELETE' then 0
+                    else greatest(new.quantity - new.owned, 0) end;
 
   select id into v_binder from public.binders
-   where user_id = auth.uid() and category = v_deck.game and flair = 'wishlist'
+   where user_id = v_deck.user_id and category = v_deck.game and flair = 'wishlist'
    limit 1;
-  if v_binder is null then
-    insert into public.binders (user_id, name, category, flair)
-    values (auth.uid(), 'Wishlist', v_deck.game, 'wishlist')
-    returning id into v_binder;
+
+  if v_missing > 0 then
+    if v_binder is null then
+      insert into public.binders (user_id, name, category, flair)
+      values (v_deck.user_id, 'Wishlist', v_deck.game, 'wishlist')
+      returning id into v_binder;
+    end if;
+    if exists (select 1 from public.listings where binder_id = v_binder and card_code = v_code) then
+      update public.listings set deck_id = v_deck.id, quantity = v_missing
+       where binder_id = v_binder and card_code = v_code;
+    else
+      insert into public.listings (binder_id, card_code, quantity, listing_type, deck_id)
+      values (v_binder, v_code, v_missing, 'trade', v_deck.id);
+    end if;
+  elsif v_binder is not null then
+    delete from public.listings
+     where binder_id = v_binder and card_code = v_code and deck_id = v_deck.id;
   end if;
 
+  return coalesce(new, old);
+end $$;
+
+drop trigger if exists deck_cards_sync_wishlist on public.deck_cards;
+create trigger deck_cards_sync_wishlist
+  after insert or update or delete on public.deck_cards
+  for each row execute function public.deck_cards_sync_wishlist();
+
+-- Deleting a deck removes the wishlist rows it claimed (before the FK
+-- would orphan them with deck_id = null).
+create or replace function public.decks_cleanup_wishlist()
+returns trigger language plpgsql as $$
+begin
+  delete from public.listings where deck_id = old.id;
+  return old;
+end $$;
+
+drop trigger if exists decks_cleanup_wishlist on public.decks;
+create trigger decks_cleanup_wishlist
+  before delete on public.decks
+  for each row execute function public.decks_cleanup_wishlist();
+
+-- One-shot backfill: mirror currently-missing deck cards into wishlists
+-- (idempotent — re-running just rewrites the same rows).
+do $$
+declare r record; v_binder uuid;
+begin
   for r in
-    select card_code, quantity - owned as missing
-      from public.deck_cards
-     where deck_id = p_deck_id and owned < quantity
+    select dc.deck_id, dc.card_code, dc.quantity - dc.owned as missing,
+           d.user_id, d.game
+      from public.deck_cards dc
+      join public.decks d on d.id = dc.deck_id
+     where dc.owned < dc.quantity
   loop
+    select id into v_binder from public.binders
+     where user_id = r.user_id and category = r.game and flair = 'wishlist'
+     limit 1;
+    if v_binder is null then
+      insert into public.binders (user_id, name, category, flair)
+      values (r.user_id, 'Wishlist', r.game, 'wishlist')
+      returning id into v_binder;
+    end if;
     if exists (select 1 from public.listings where binder_id = v_binder and card_code = r.card_code) then
-      update public.listings
-         set deck_id = p_deck_id, quantity = greatest(quantity, r.missing)
+      update public.listings set deck_id = r.deck_id, quantity = r.missing
        where binder_id = v_binder and card_code = r.card_code;
     else
       insert into public.listings (binder_id, card_code, quantity, listing_type, deck_id)
-      values (v_binder, r.card_code, r.missing, 'trade', p_deck_id);
+      values (v_binder, r.card_code, r.missing, 'trade', r.deck_id);
     end if;
-    v_n := v_n + 1;
   end loop;
-  return v_n;
 end $$;
 
 -- ---------- RLS ----------
