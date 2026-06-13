@@ -103,7 +103,9 @@
     .cb-filters { display:flex; gap:.9rem; flex-wrap:wrap; align-items:flex-end; }
     .cb-filters .filter-group { margin-bottom:0; flex:1 1 130px; }
     .cb-filters .btn { flex:0 0 auto; }
-    .cb-filters .cb-owned { display:flex; flex:0 0 auto; margin-right:0; }
+    .cb-filters .cb-owned { display:flex; flex:0 0 auto; margin-left:auto; margin-right:0; position:relative; }
+    .cb-owned-tip { position:absolute; bottom:calc(100% + 8px); right:0; width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; color:var(--text-secondary,#c4b9ad); display:none; z-index:60; box-shadow:0 4px 14px rgba(0,0,0,.4); pointer-events:none; }
+    .cb-owned:hover .cb-owned-tip { display:block; }
     .cb-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:.85rem; margin-top:1rem; }
     @media (max-width:760px) { .cb-grid { grid-template-columns:repeat(3, minmax(0,1fr)); } }
     .cb-in-deck { color:#7ec96a; }
@@ -310,7 +312,10 @@
               <select class="form-input" id="cbCounter"><option value="">Any</option></select>
             </div>
             <button class="btn" id="cbClear">Clear</button>
-            <label class="dl-owned cb-owned"><input type="checkbox" id="cbOwned"> Owned</label>
+            <label class="dl-owned cb-owned">
+              <input type="checkbox" id="cbOwned"> Owned
+              <span class="cb-owned-tip">Marks every card you add as already owned, so it won't show as missing or get pushed to your wishlist.</span>
+            </label>
           </div>
           <p class="auth-error" id="cbError"></p>
           <p class="results-count" id="cbCount"></p>
