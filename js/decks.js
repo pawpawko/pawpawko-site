@@ -352,6 +352,7 @@
   // Deck contents: one tile per unique card with a x1..x4 / X quantity
   // badge; clicking a tile opens the qty/owned editor row beneath the grid.
   let selectedCode = null;
+  let holdJustFired = 0; // timestamp guard so a hold's release click is ignored
 
   function renderDeck() {
     const grid = $('edDeckGrid');
@@ -410,8 +411,29 @@
           <button data-d="-1" ${r.owned <= 0 ? 'disabled' : ''}>−</button><span class="val">${r.owned}/${r.quantity}</span><button data-d="1" ${r.owned >= r.quantity ? 'disabled' : ''}>+</button>
         </div>
       </div>`;
-    box.querySelectorAll('.stepper button').forEach(btn => {
-      btn.addEventListener('click', () => stepCard(r.card_code, btn.closest('.stepper').dataset.kind, parseInt(btn.dataset.d, 10)));
+    box.querySelectorAll('.stepper button').forEach(btn => wireStepper(btn, r.card_code));
+  }
+
+  // Click = ±1; press-and-hold (~450ms) jumps to min/max.
+  function wireStepper(btn, code) {
+    const kind = btn.closest('.stepper').dataset.kind;
+    const delta = parseInt(btn.dataset.d, 10);
+    let timer = null;
+    const startHold = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        holdJustFired = Date.now();
+        setCardValue(code, kind, delta < 0 ? 'min' : 'max');
+      }, 450);
+    };
+    const cancelHold = () => { clearTimeout(timer); timer = null; };
+    btn.addEventListener('pointerdown', startHold);
+    btn.addEventListener('pointerup', cancelHold);
+    btn.addEventListener('pointerleave', cancelHold);
+    btn.addEventListener('contextmenu', (e) => e.preventDefault()); // mobile long-press menu
+    btn.addEventListener('click', (e) => {
+      if (Date.now() - holdJustFired < 600) { e.preventDefault(); return; } // released after a hold
+      stepCard(code, kind, delta);
     });
   }
 
@@ -438,6 +460,30 @@
       }
     } else {
       const o = Math.max(0, Math.min(row.quantity, row.owned + delta));
+      const { error } = await window.sb.from('deck_cards')
+        .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+      if (error) { $('edError').textContent = error.message; return; }
+    }
+    await reloadDeckCards();
+  }
+
+  // Hold-to-jump: qty min=1 / max=copy cap (50 if unlimited); owned min=0 /
+  // max=quantity. (Holding qty "-" stops at 1, never deletes the card.)
+  async function setCardValue(code, kind, target) {
+    const row = deckCards.find(r => r.card_code === code);
+    if (!row) return;
+    $('edError').textContent = '';
+    if (kind === 'qty') {
+      const cap = capFor(code);
+      const q = target === 'min' ? 1 : (cap ?? 50);
+      if (q === row.quantity) return;
+      const { error } = await window.sb.from('deck_cards')
+        .update({ quantity: q, owned: Math.min(row.owned, q) })
+        .eq('deck_id', deck.id).eq('card_code', code);
+      if (error) { $('edError').textContent = error.message; return; }
+    } else {
+      const o = target === 'min' ? 0 : row.quantity;
+      if (o === row.owned) return;
       const { error } = await window.sb.from('deck_cards')
         .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
       if (error) { $('edError').textContent = error.message; return; }
