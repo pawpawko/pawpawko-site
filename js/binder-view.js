@@ -851,7 +851,10 @@
         .select('id, quantity, listing_type, notes, card_code, sort_order, created_at')
         .eq('binder_id', currentBinderId)
         .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false });
+        // Un-placed cards (null sort_order) append at the end: oldest first,
+        // newest last. So auto-added rows (e.g. deck wishlist sync) land at
+        // the bottom of the binder rather than jumping to page one.
+        .order('created_at', { ascending: true });
       lerr = res.error;
       rawListings = res.data;
     } else {
