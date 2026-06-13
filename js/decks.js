@@ -680,13 +680,14 @@
     $('edError').textContent = '';
     $('cbError').textContent = '';
     cardInfo[card.card_code] = card;
+    const owned = $('cbOwned').checked; // count the added copy as owned
     const existing = deckCards.find(r => r.card_code === card.card_code);
     const error = existing
       ? (await window.sb.from('deck_cards')
-          .update({ quantity: existing.quantity + 1 })
+          .update({ quantity: existing.quantity + 1, owned: owned ? existing.owned + 1 : existing.owned })
           .eq('deck_id', deck.id).eq('card_code', card.card_code)).error
       : (await window.sb.from('deck_cards')
-          .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1 })).error;
+          .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 })).error;
     if (error) { $('cbError').textContent = error.message; return; } // trigger messages: copies/bans/pairs
     await reloadDeckCards();
     renderBrowser(); // refresh the xN markers without resetting Load More
