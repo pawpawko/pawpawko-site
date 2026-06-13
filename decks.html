@@ -17,7 +17,7 @@
     .deck-tile a { display:block; text-decoration:none; color:inherit; }
     .deck-tile img { width:100%; aspect-ratio:.72; object-fit:cover; display:block; }
     .deck-tile-body { padding:.7rem .85rem 0.9rem; }
-    .deck-tile-name { font-family:Cinzel, serif; font-size:.95rem; margin-bottom:.3rem; }
+    .deck-tile-name { font-family:Cinzel, serif; font-size:.95rem; margin-bottom:.3rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .deck-tile-meta { font-size:.78rem; opacity:.75; display:flex; gap:.5rem; flex-wrap:wrap; }
     .add-deck-tile { aspect-ratio:.72; border:1px solid var(--accent, #c9956a); background:var(--bg-secondary, #201c33); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:var(--transition); }
     .add-deck-tile span { font-family:Cinzel, serif; font-size:3rem; color:var(--accent, #c9956a); line-height:1; opacity:.8; }
@@ -214,7 +214,7 @@
             </div>
             <div class="form-group" style="margin-top:1rem;">
               <div class="name-row">
-                <input class="form-input" type="text" id="edDeckName" maxlength="60">
+                <input class="form-input" type="text" id="edDeckName" maxlength="24">
                 <span class="eye-wrap">
                 <button class="eye-btn" id="edEyeBtn" type="button" aria-label="Toggle deck visibility">
                   <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.4 10.4 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.9 9.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg>

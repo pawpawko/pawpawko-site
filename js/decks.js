@@ -185,8 +185,9 @@
         <a href="#" data-deck="${d.id}">
           <img src="${esc(L.image_url || '')}" alt="">
           <div class="deck-tile-body">
-            <div class="deck-tile-name">${esc(d.name)} ${v.valid ? '<span class="deck-badge ok">valid</span>' : '<span class="deck-badge bad">cooking</span>'}</div>
+            <div class="deck-tile-name">${esc(d.name)}</div>
             <div class="deck-tile-meta">
+              ${v.valid ? '<span class="deck-badge ok">valid</span>' : '<span class="deck-badge bad">cooking</span>'}
               ${d.format === 'eternal' ? '<span class="deck-badge etern">eternal</span>' : ''}
               ${d.is_public ? `<span class="deck-badge pub">${esc(d.listing_type || 'public')}</span>` : ''}
             </div>
