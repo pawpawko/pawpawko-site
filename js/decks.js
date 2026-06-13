@@ -55,14 +55,22 @@
     rotatedPrefixes = new Set((rotSets || []).map(r => r.set_prefix));
     rotationExempt = new Set((rotEx || []).map(r => r.card_code));
 
-    $('newDeckBtn').addEventListener('click', () => { $('newDeckForm').style.display = ''; $('leaderSearch').focus(); });
+    $('newDeckBtn').addEventListener('click', () => { $('importForm').style.display = 'none'; $('newDeckForm').style.display = ''; $('leaderSearch').focus(); });
     $('cancelNewDeck').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('leaderResults').innerHTML = ''; $('leaderSearch').value = ''; $('newDeckError').textContent = ''; });
+    $('importDeckBtn').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('importForm').style.display = ''; $('impText').focus(); });
+    $('cancelImport').addEventListener('click', () => { $('importForm').style.display = 'none'; $('impText').value = ''; $('impError').textContent = ''; });
+    $('impGo').addEventListener('click', importNewDeck);
+    $('edExportBtn').addEventListener('click', openExport);
+    $('edImportBtn').addEventListener('click', openImportEditor);
+    $('dlClose').addEventListener('click', closeDl);
+    $('dlAction').addEventListener('click', onDlAction);
+    $('dlOverlay').addEventListener('click', (e) => { if (e.target === $('dlOverlay')) closeDl(); });
     $('leaderSearch').addEventListener('input', debounce(searchLeaders, 250));
     $('backToDecks').addEventListener('click', showList);
     $('edAddBtn').addEventListener('click', openBrowser);
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBrowser(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBrowser(); closeDl(); } });
     ['cbType', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
@@ -286,10 +294,7 @@
     const grid = $('edDeckGrid');
     grid.innerHTML = '';
 
-    const sorted = deckCards.slice().sort((a, b) => {
-      const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
-      return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
-    });
+    const sorted = deckCards.slice().sort(byCostThenCode);
     if (!sorted.some(r => r.card_code === selectedCode)) selectedCode = null;
 
     sorted.forEach(r => {
@@ -665,6 +670,158 @@
     const { error } = await window.sb.from('decks').update({ name }).eq('id', deck.id);
     if (error) $('edError').textContent = error.message;
     else deck.name = name;
+  }
+
+  // ---------------- decklist import / export ----------------
+  // Format: one card per line as "NxCODE" (e.g. 4xOP16-091); the leader is
+  // its own 1x line. Alt-art suffixes normalize to base codes; duplicate
+  // lines sum.
+
+  let dlMode = 'export';
+
+  const byCostThenCode = (a, b) => {
+    const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
+    return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
+  };
+
+  function parseDecklist(text) {
+    const rows = new Map();
+    const errors = [];
+    String(text || '').split(/\r?\n/).forEach((line, i) => {
+      const t = line.trim();
+      if (!t) return;
+      const m = t.match(/^(\d+)\s*[x×]\s*([A-Za-z0-9_-]+)$/i);
+      if (!m) { errors.push(`line ${i + 1}: "${t}"`); return; }
+      const code = baseCode(m[2].toUpperCase());
+      rows.set(code, (rows.get(code) || 0) + Number(m[1]));
+    });
+    return { rows, errors };
+  }
+
+  async function lookupCards(codes) {
+    const out = {};
+    for (let i = 0; i < codes.length; i += 100) {
+      const { data } = await window.sb
+        .from('cards').select('card_code,name,color,cost,type,image_url')
+        .eq('game', GAME).in('card_code', codes.slice(i, i + 100));
+      (data || []).forEach(c => { out[c.card_code] = c; });
+    }
+    return out;
+  }
+
+  function closeDl() { $('dlOverlay').style.display = 'none'; }
+
+  function openExport() {
+    dlMode = 'export';
+    $('dlTitle').textContent = 'Export Decklist';
+    $('dlHint').textContent = 'Leader first, then one line per card. Copy and share.';
+    $('dlError').textContent = '';
+    const sorted = deckCards.slice().sort(byCostThenCode);
+    $('dlText').value = [`1x${deck.leader_card_code}`, ...sorted.map(r => `${r.quantity}x${r.card_code}`)].join('\n');
+    $('dlText').readOnly = true;
+    $('dlAction').textContent = 'Copy';
+    $('dlOverlay').style.display = '';
+  }
+
+  function openImportEditor() {
+    dlMode = 'import';
+    $('dlTitle').textContent = 'Import Decklist';
+    $('dlHint').textContent = 'Replaces every card in this deck. A leader line (1xCODE) must match this deck’s leader.';
+    $('dlError').textContent = '';
+    $('dlText').value = '';
+    $('dlText').readOnly = false;
+    $('dlAction').textContent = 'Import';
+    $('dlOverlay').style.display = '';
+    $('dlText').focus();
+  }
+
+  async function onDlAction() {
+    if (dlMode === 'export') {
+      try {
+        await navigator.clipboard.writeText($('dlText').value);
+        $('dlAction').textContent = 'Copied ✓';
+        setTimeout(() => { $('dlAction').textContent = 'Copy'; }, 1800);
+      } catch (e) {
+        $('dlText').select(); // clipboard blocked: leave it selected to copy manually
+      }
+      return;
+    }
+    await doEditorImport();
+  }
+
+  async function doEditorImport() {
+    const errEl = $('dlError');
+    errEl.textContent = '';
+    const { rows, errors } = parseDecklist($('dlText').value);
+    if (errors.length) { errEl.textContent = 'Bad lines — ' + errors.slice(0, 3).join('; '); return; }
+    if (!rows.size) { errEl.textContent = 'Nothing to import.'; return; }
+    const info = await lookupCards([...rows.keys()]);
+    const missing = [...rows.keys()].filter(c => !info[c]);
+    if (missing.length) { errEl.textContent = 'Unknown card(s): ' + missing.join(', '); return; }
+    for (const code of [...rows.keys()]) {
+      if (info[code].type !== 'LEADER') continue;
+      if (code !== deck.leader_card_code) {
+        errEl.textContent = `This list is led by ${info[code].name} (${code}) — create a deck with that leader, then import there.`;
+        return;
+      }
+      rows.delete(code); // matching leader line: implied, drop it
+    }
+    $('dlAction').disabled = true;
+    await window.sb.from('deck_cards').delete().eq('deck_id', deck.id);
+    const fails = [];
+    for (const [code, qty] of rows) {
+      cardInfo[code] = info[code];
+      const { error } = await window.sb.from('deck_cards')
+        .insert({ deck_id: deck.id, card_code: code, quantity: qty });
+      if (error) fails.push(`${code}: ${error.message}`);
+    }
+    $('dlAction').disabled = false;
+    await reloadDeckCards();
+    if (fails.length) {
+      errEl.textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
+    } else {
+      closeDl();
+    }
+  }
+
+  async function importNewDeck() {
+    const errEl = $('impError');
+    errEl.textContent = '';
+    const { rows, errors } = parseDecklist($('impText').value);
+    if (errors.length) { errEl.textContent = 'Bad lines — ' + errors.slice(0, 3).join('; '); return; }
+    if (!rows.size) { errEl.textContent = 'Paste a decklist first.'; return; }
+    const info = await lookupCards([...rows.keys()]);
+    const missing = [...rows.keys()].filter(c => !info[c]);
+    if (missing.length) { errEl.textContent = 'Unknown card(s): ' + missing.join(', '); return; }
+    const leaders = [...rows.keys()].filter(c => info[c].type === 'LEADER');
+    if (leaders.length !== 1) {
+      errEl.textContent = 'Include exactly one leader line (1xCODE).';
+      return;
+    }
+    const L = leaders[0];
+    rows.delete(L);
+    const { data: d, error } = await window.sb
+      .from('decks')
+      .insert({ user_id: user.id, game: GAME, leader_card_code: L,
+                name: `${info[L].name} Deck`, format: pillValue('impFormat') || 'standard' })
+      .select('id').single();
+    if (error) {
+      errEl.textContent = (error.code === '23505' && /one_deck_per_leader/.test(error.message || ''))
+        ? `You already have a deck for ${info[L].name} — only one deck per leader.`
+        : error.message;
+      return;
+    }
+    const fails = [];
+    for (const [code, qty] of rows) {
+      cardInfo[code] = info[code];
+      const { error: e2 } = await window.sb.from('deck_cards')
+        .insert({ deck_id: d.id, card_code: code, quantity: qty });
+      if (e2) fails.push(`${code}: ${e2.message}`);
+    }
+    $('importForm').style.display = 'none';
+    $('impText').value = '';
+    await openDeck(d.id);
+    if (fails.length) $('edError').textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
   }
 
   async function deleteDeck() {
