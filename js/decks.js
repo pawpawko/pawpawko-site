@@ -55,8 +55,8 @@
     rotatedPrefixes = new Set((rotSets || []).map(r => r.set_prefix));
     rotationExempt = new Set((rotEx || []).map(r => r.card_code));
 
-    $('newDeckBtn').addEventListener('click', () => { $('newDeckForm').style.display = ''; $('leaderSearch').focus(); });
-    $('cancelNewDeck').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('leaderResults').innerHTML = ''; $('leaderSearch').value = ''; $('ndImport').value = ''; $('newDeckError').textContent = ''; });
+    $('ndClose').addEventListener('click', closeNewDeck);
+    $('ndOverlay').addEventListener('click', (e) => { if (e.target === $('ndOverlay')) closeNewDeck(); });
     $('edExportBtn').addEventListener('click', openExport);
     $('edImportBtn').addEventListener('click', openImportEditor);
     $('dlClose').addEventListener('click', closeDl);
@@ -67,7 +67,7 @@
     $('edAddBtn').addEventListener('click', openBrowser);
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBrowser(); closeDl(); } });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBrowser(); closeDl(); closeNewDeck(); } });
     ['cbType', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
@@ -125,9 +125,33 @@
 
   // ---------------- deck list ----------------
 
+  function openNewDeck() {
+    $('ndOverlay').style.display = '';
+    $('leaderSearch').focus();
+  }
+
+  function closeNewDeck() {
+    $('ndOverlay').style.display = 'none';
+    $('leaderResults').innerHTML = '';
+    $('leaderSearch').value = '';
+    $('ndImport').value = '';
+    $('newDeckError').textContent = '';
+  }
+
   async function loadDecks() {
     const grid = $('decksGrid');
     grid.innerHTML = '';
+
+    // The add tile always leads the grid, leader-card sized.
+    const add = document.createElement('li');
+    add.className = 'deck-tile add-deck-tile';
+    add.title = 'New deck';
+    add.innerHTML = '<span aria-hidden="true">+</span>';
+    add.setAttribute('role', 'button');
+    add.setAttribute('aria-label', 'New deck');
+    add.addEventListener('click', openNewDeck);
+    grid.appendChild(add);
+
     const { data: decks, error } = await window.sb
       .from('decks')
       .select('id, name, leader_card_code, is_public, listing_type, format, created_at')
@@ -136,7 +160,7 @@
     if (error) { $('decksCount').textContent = error.message; return; }
 
     if (!decks || decks.length === 0) {
-      $('decksCount').textContent = 'No decks yet — pick a leader to start building.';
+      $('decksCount').textContent = 'No decks yet — tap + to start building.';
       return;
     }
     $('decksCount').textContent = `${decks.length} deck${decks.length === 1 ? '' : 's'}`;
@@ -249,7 +273,7 @@
         if (e2) fails.push(`${code}: ${e2.message}`);
       }
     }
-    $('cancelNewDeck').click();
+    closeNewDeck();
     await openDeck(data.id, true);
     if (fails.length) $('edError').textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
   }

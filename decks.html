@@ -19,6 +19,10 @@
     .deck-tile-body { padding:.7rem .85rem 0.9rem; }
     .deck-tile-name { font-family:Cinzel, serif; font-size:.95rem; margin-bottom:.3rem; }
     .deck-tile-meta { font-size:.78rem; opacity:.75; display:flex; gap:.5rem; flex-wrap:wrap; }
+    .add-deck-tile { aspect-ratio:.72; border:1px solid var(--accent, #c9956a); background:var(--bg-secondary, #201c33); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:var(--transition); }
+    .add-deck-tile span { font-family:Cinzel, serif; font-size:3rem; color:var(--accent, #c9956a); line-height:1; opacity:.8; }
+    .add-deck-tile:hover { background:var(--bg-card, #2a2542); }
+    .add-deck-tile:hover span { opacity:1; }
     .deck-badge { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:.05rem .55rem; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; }
     .deck-badge.ok    { color:#7ec96a; }
     .deck-badge.bad   { color:#d98a8a; }
@@ -162,15 +166,15 @@
             <h2>My Decks</h2>
             <p class="text-muted-line" id="decksCount"></p>
           </div>
-          <button class="btn btn-filled" id="newDeckBtn" title="New deck" aria-label="New deck">+</button>
         </div>
 
         <ul class="deck-grid" id="decksGrid"></ul>
 
-        <!-- New deck: pick a leader -->
-        <form id="newDeckForm" class="new-binder-form" style="display:none;">
-          <h3>New Deck</h3>
-          <div class="divider"></div>
+        <!-- New deck overlay: pick a leader (optionally with a decklist) -->
+        <div class="cb-overlay" id="ndOverlay" style="display:none;" role="dialog" aria-modal="true" aria-label="New deck">
+          <div class="cb-box" style="max-width:480px;">
+          <button class="cb-close" id="ndClose" aria-label="Close">✕</button>
+          <h3 style="margin-top:0;">New Deck</h3>
           <p class="text-muted-line">Every deck is built around one Leader — and you can only have one deck per Leader.</p>
           <div class="form-group">
             <label class="form-label">Format</label>
@@ -190,11 +194,9 @@
             <input class="form-input" type="text" id="leaderSearch" placeholder="e.g. Luffy, OP01-001" autocomplete="off">
           </div>
           <ul class="leader-results" id="leaderResults"></ul>
-          <div style="display:flex; gap:1rem; margin-top:1.5rem;">
-            <button type="button" class="btn" id="cancelNewDeck">Cancel</button>
-          </div>
           <p class="auth-error" id="newDeckError"></p>
-        </form>
+          </div>
+        </div>
       </div>
 
       <!-- ============ DECK EDITOR VIEW ============ -->
