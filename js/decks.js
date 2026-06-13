@@ -66,7 +66,7 @@
     $('dlAction').addEventListener('click', onDlAction);
     $('dlOverlay').addEventListener('click', (e) => { if (e.target === $('dlOverlay')) closeDl(); });
     $('leaderSearch').addEventListener('input', debounce(searchLeaders, 250));
-    $('backToDecks').addEventListener('click', showList);
+    $('backToDecks').addEventListener('click', () => showList()); // no event arg -> fromPop stays false
     $('edAddBtn').addEventListener('click', openBrowser);
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
@@ -110,6 +110,13 @@
     $('ndFormat').addEventListener('click', () => searchLeaders());
     $('edFormat').addEventListener('click', onFormatClick);
     $('edListingType').addEventListener('click', onListingTypeClick);
+
+    // Browser Back/Forward moves between the deck list and the editor.
+    window.addEventListener('popstate', () => {
+      const id = new URLSearchParams(location.search).get('deck');
+      if (id) openDeck(id);
+      else showList(true);
+    });
 
     // Deep-link / refresh restore: ?deck=<id> reopens that deck's editor.
     const deepLink = new URLSearchParams(location.search).get('deck');
@@ -167,7 +174,7 @@
             </div>
           </div>
         </a>`;
-      li.querySelector('a').addEventListener('click', (e) => { e.preventDefault(); openDeck(d.id); });
+      li.querySelector('a').addEventListener('click', (e) => { e.preventDefault(); openDeck(d.id, true); });
       grid.appendChild(li);
     });
   }
@@ -220,19 +227,23 @@
 
   // ---------------- deck editor ----------------
 
-  function showList() {
-    history.replaceState(null, '', 'decks.html');
+  function showList(fromPop = false) {
+    if (!fromPop) history.replaceState(null, '', 'decks.html');
     $('editorWrap').style.display = 'none';
     $('decksWrap').style.display = '';
     deck = null;
     loadDecks();
   }
 
-  async function openDeck(deckId) {
+  // push=true when the user navigates list -> editor (so browser Back
+  // returns to the list); deep links and popstate restores replace instead.
+  async function openDeck(deckId, push = false) {
     const { data: d, error } = await window.sb.from('decks').select('*').eq('id', deckId).single();
     if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
     deck = d;
-    history.replaceState(null, '', `decks.html?deck=${d.id}`); // survives hard refresh
+    const url = `decks.html?deck=${d.id}`; // survives hard refresh
+    if (push) history.pushState(null, '', url);
+    else history.replaceState(null, '', url);
     const { data: L } = await window.sb
       .from('cards').select('card_code,name,color,image_url,image_url_lg')
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
@@ -820,7 +831,7 @@
     }
     $('importForm').style.display = 'none';
     $('impText').value = '';
-    await openDeck(d.id);
+    await openDeck(d.id, true);
     if (fails.length) $('edError').textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
   }
 
