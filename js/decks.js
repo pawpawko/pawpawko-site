@@ -368,9 +368,14 @@
         + (r.card_code === selectedCode ? ' selected' : '')
         + (r.owned < r.quantity ? ' missing' : ''); // owned-short → highlightable
       tile.title = `${c.name || r.card_code} — ${r.quantity} in deck, ${r.owned} owned`;
+      // Badge shows total qty normally; while hovering "N missing" the
+      // owned-short tiles swap to their missing count (highlighted).
       tile.innerHTML = `
         <img src="${esc(c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
-        <span class="qty-badge">${r.quantity > 4 ? 'X' : 'x' + r.quantity}</span>`;
+        <span class="qty-badge">
+          <span class="qty-total">${r.quantity > 4 ? 'X' : 'x' + r.quantity}</span>
+          <span class="qty-missing">x${r.quantity - r.owned}</span>
+        </span>`;
       tile.addEventListener('click', () => {
         selectedCode = selectedCode === r.card_code ? null : r.card_code;
         renderDeck();
