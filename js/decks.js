@@ -55,11 +55,8 @@
     rotatedPrefixes = new Set((rotSets || []).map(r => r.set_prefix));
     rotationExempt = new Set((rotEx || []).map(r => r.card_code));
 
-    $('newDeckBtn').addEventListener('click', () => { $('importForm').style.display = 'none'; $('newDeckForm').style.display = ''; $('leaderSearch').focus(); });
-    $('cancelNewDeck').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('leaderResults').innerHTML = ''; $('leaderSearch').value = ''; $('newDeckError').textContent = ''; });
-    $('importDeckBtn').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('importForm').style.display = ''; $('impText').focus(); });
-    $('cancelImport').addEventListener('click', () => { $('importForm').style.display = 'none'; $('impText').value = ''; $('impError').textContent = ''; });
-    $('impGo').addEventListener('click', importNewDeck);
+    $('newDeckBtn').addEventListener('click', () => { $('newDeckForm').style.display = ''; $('leaderSearch').focus(); });
+    $('cancelNewDeck').addEventListener('click', () => { $('newDeckForm').style.display = 'none'; $('leaderResults').innerHTML = ''; $('leaderSearch').value = ''; $('ndImport').value = ''; $('newDeckError').textContent = ''; });
     $('edExportBtn').addEventListener('click', openExport);
     $('edImportBtn').addEventListener('click', openImportEditor);
     $('dlClose').addEventListener('click', closeDl);
@@ -208,6 +205,27 @@
   async function createDeck(leader) {
     const errEl = $('newDeckError');
     errEl.textContent = '';
+
+    // Optional pasted decklist: validate fully BEFORE creating the deck.
+    const text = $('ndImport').value.trim();
+    let listRows = null, listInfo = null;
+    if (text) {
+      const { rows, errors } = parseDecklist(text);
+      if (errors.length) { errEl.textContent = 'Bad lines — ' + errors.slice(0, 3).join('; '); return; }
+      listInfo = await lookupCards([...rows.keys()]);
+      const missing = [...rows.keys()].filter(c => !listInfo[c]);
+      if (missing.length) { errEl.textContent = 'Unknown card(s): ' + missing.join(', '); return; }
+      for (const code of [...rows.keys()]) {
+        if (listInfo[code].type !== 'LEADER') continue;
+        if (code !== baseCode(leader.card_code)) {
+          errEl.textContent = `This list is led by ${listInfo[code].name} (${code}) — pick that leader instead.`;
+          return;
+        }
+        rows.delete(code); // leader line matches the picked leader
+      }
+      listRows = rows;
+    }
+
     const { data, error } = await window.sb
       .from('decks')
       .insert({ user_id: user.id, game: GAME, leader_card_code: leader.card_code,
@@ -221,8 +239,19 @@
       }
       return;
     }
+
+    const fails = [];
+    if (listRows) {
+      for (const [code, qty] of listRows) {
+        cardInfo[code] = listInfo[code];
+        const { error: e2 } = await window.sb.from('deck_cards')
+          .insert({ deck_id: data.id, card_code: code, quantity: qty });
+        if (e2) fails.push(`${code}: ${e2.message}`);
+      }
+    }
     $('cancelNewDeck').click();
-    openDeck(data.id);
+    await openDeck(data.id, true);
+    if (fails.length) $('edError').textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
   }
 
   // ---------------- deck editor ----------------
@@ -795,45 +824,6 @@
     }
   }
 
-  async function importNewDeck() {
-    const errEl = $('impError');
-    errEl.textContent = '';
-    const { rows, errors } = parseDecklist($('impText').value);
-    if (errors.length) { errEl.textContent = 'Bad lines — ' + errors.slice(0, 3).join('; '); return; }
-    if (!rows.size) { errEl.textContent = 'Paste a decklist first.'; return; }
-    const info = await lookupCards([...rows.keys()]);
-    const missing = [...rows.keys()].filter(c => !info[c]);
-    if (missing.length) { errEl.textContent = 'Unknown card(s): ' + missing.join(', '); return; }
-    const leaders = [...rows.keys()].filter(c => info[c].type === 'LEADER');
-    if (leaders.length !== 1) {
-      errEl.textContent = 'Include exactly one leader line (1xCODE).';
-      return;
-    }
-    const L = leaders[0];
-    rows.delete(L);
-    const { data: d, error } = await window.sb
-      .from('decks')
-      .insert({ user_id: user.id, game: GAME, leader_card_code: L,
-                name: `${info[L].name} Deck`, format: pillValue('impFormat') || 'standard' })
-      .select('id').single();
-    if (error) {
-      errEl.textContent = (error.code === '23505' && /one_deck_per_leader/.test(error.message || ''))
-        ? `You already have a deck for ${info[L].name} — only one deck per leader.`
-        : error.message;
-      return;
-    }
-    const fails = [];
-    for (const [code, qty] of rows) {
-      cardInfo[code] = info[code];
-      const { error: e2 } = await window.sb.from('deck_cards')
-        .insert({ deck_id: d.id, card_code: code, quantity: qty });
-      if (e2) fails.push(`${code}: ${e2.message}`);
-    }
-    $('importForm').style.display = 'none';
-    $('impText').value = '';
-    await openDeck(d.id, true);
-    if (fails.length) $('edError').textContent = `${fails.length} line(s) rejected — ${fails.slice(0, 3).join('; ')}`;
-  }
 
   async function deleteDeck() {
     if (!confirm(`Delete "${deck.name}"? This cannot be undone.`)) return;

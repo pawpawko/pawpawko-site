@@ -162,10 +162,7 @@
             <h2>My Decks</h2>
             <p class="text-muted-line" id="decksCount"></p>
           </div>
-          <div style="display:flex; gap:.75rem;">
-            <button class="btn" id="importDeckBtn">Import</button>
-            <button class="btn btn-filled" id="newDeckBtn">+ New Deck</button>
-          </div>
+          <button class="btn btn-filled" id="newDeckBtn" title="New deck" aria-label="New deck">+</button>
         </div>
 
         <ul class="deck-grid" id="decksGrid"></ul>
@@ -184,6 +181,11 @@
             <p class="text-muted-line" style="margin-top:.35rem;">Standard follows the current rotation (Block 1 is out). Eternal allows every card ever printed, minus bans.</p>
           </div>
           <div class="form-group">
+            <label class="form-label" for="ndImport">Decklist (optional)</label>
+            <p class="text-muted-line" style="margin:0 0 .4rem;">Paste a decklist — one line per card as <strong>quantity x card number</strong> — and it imports into the new deck when you pick the leader below.</p>
+            <textarea class="form-input dl-text" id="ndImport" rows="7" spellcheck="false" placeholder="4xOP16-091&#10;4xOP16-092&#10;…"></textarea>
+          </div>
+          <div class="form-group">
             <label class="form-label" for="leaderSearch">Search Leaders</label>
             <input class="form-input" type="text" id="leaderSearch" placeholder="e.g. Luffy, OP01-001" autocomplete="off">
           </div>
@@ -192,28 +194,6 @@
             <button type="button" class="btn" id="cancelNewDeck">Cancel</button>
           </div>
           <p class="auth-error" id="newDeckError"></p>
-        </form>
-
-        <!-- Import a whole deck from a pasted decklist -->
-        <form id="importForm" class="new-binder-form" style="display:none;">
-          <h3>Import Decklist</h3>
-          <div class="divider"></div>
-          <p class="text-muted-line">One card per line as <strong>quantity x card number</strong>; include the leader as its own <code>1x</code> line.</p>
-          <div class="form-group">
-            <label class="form-label">Format</label>
-            <div class="pill-choice" id="impFormat">
-              <button type="button" class="pill-choice-btn active" data-value="standard">Standard</button>
-              <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <textarea class="form-input dl-text" id="impText" rows="10" spellcheck="false" placeholder="1xOP16-079&#10;4xOP16-091&#10;4xOP16-092&#10;…"></textarea>
-          </div>
-          <div style="display:flex; gap:1rem;">
-            <button type="button" class="btn btn-filled" id="impGo">Import</button>
-            <button type="button" class="btn" id="cancelImport">Cancel</button>
-          </div>
-          <p class="auth-error" id="impError"></p>
         </form>
       </div>
 
