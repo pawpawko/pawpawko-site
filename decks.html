@@ -78,7 +78,8 @@
     .deck-card-tile.selected img { outline:2px solid #c9956a; }
     .deck-card-tile .qty-badge { position:absolute; top:4px; right:4px; background:rgba(12,10,18,.85); border:1px solid var(--border,#3a3344); border-radius:999px; padding:.05rem .45rem; font-size:.74rem; line-height:1.3; }
     .deck-card-tile.empty-slot { border:1px dashed var(--border,#3a3344); border-radius:6px; aspect-ratio:.72; cursor:default; }
-    .deck-card-edit { display:flex; align-items:center; gap:.75rem; padding:.5rem .6rem; border:1px solid var(--border,#3a3344); border-radius:8px; margin-bottom:1rem; }
+    .deck-top-row { display:flex; gap:.75rem; align-items:stretch; justify-content:flex-end; margin-bottom:1rem; }
+    .deck-card-edit { display:flex; flex:1; align-items:center; gap:.75rem; padding:.5rem .6rem; border:1px solid var(--border,#3a3344); border-radius:8px; }
     .deck-card-edit img { width:42px; aspect-ratio:.72; object-fit:cover; border-radius:4px; flex:none; }
     .cb-overlay { position:fixed; inset:0; background:rgba(8,6,14,.85); z-index:1200; overflow-y:auto; padding:3.5rem 1rem 2.5rem; }
     /* Small dialogs (new deck, decklist) center vertically; margin:auto keeps
@@ -254,11 +255,11 @@
 
           <!-- right: deck contents (5-wide card grid) + add button -->
           <div>
-            <div class="deck-card-edit" id="edCardEdit" style="display:none;"></div>
-            <div class="deck-cards-grid" id="edDeckGrid"></div>
-            <div style="display:flex; justify-content:flex-end;">
+            <div class="deck-top-row">
+              <div class="deck-card-edit" id="edCardEdit" style="display:none;"></div>
               <button class="btn btn-sm" id="edAddBtn">+ Add Cards</button>
             </div>
+            <div class="deck-cards-grid" id="edDeckGrid"></div>
           </div>
         </div>
       </div>
