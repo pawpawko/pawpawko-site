@@ -40,7 +40,13 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.7;
+  /* Sticky footer: lay the page out as a column at least one viewport tall so
+     the footer can be pushed to the bottom on short pages (see .footer
+     margin-top:auto). The fixed nav is position:fixed so it's out of flow and
+     doesn't participate as a flex item. */
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -899,6 +905,10 @@ img { max-width: 100%; height: auto; display: block; }
   border-top: 1px solid var(--border);
   padding: 3rem 0;
   text-align: center;
+  /* Push to the bottom of the viewport on short pages so the footer sits a
+     consistent distance below the header across every page; taller pages let
+     it flow naturally below the content. */
+  margin-top: auto;
 }
 
 .footer-logo {
@@ -1060,6 +1070,19 @@ body.binder-editing .share-popover { display: none !important; }
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 2rem;
+}
+/* Binders grouped by game, each game under a lightweight section header. */
+.binder-group { margin-bottom: 2.5rem; }
+.binder-group:last-child { margin-bottom: 0; }
+.binder-group-title {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
 }
 .binders-grid {
   list-style: none;

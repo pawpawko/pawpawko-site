@@ -90,10 +90,14 @@
     });
   }
 
+  // Display order: OPTCG group first, then Pokémon; created_at order within.
+  const GAME_ORDER = ['optcg', 'pokemon'];
+  const GAME_LABEL = { optcg: 'One Piece TCG', pokemon: 'Pokémon' };
+
   async function loadBinders(userId) {
-    const grid = document.getElementById('bindersGrid');
+    const wrap = document.getElementById('bindersGroups');
     const countEl = document.getElementById('bindersCount');
-    grid.innerHTML = '';
+    wrap.innerHTML = '';
 
     const { data: binders, error } = await window.sb
       .from('binders')
@@ -103,42 +107,65 @@
 
     if (error) { countEl.textContent = error.message; return; }
 
-    // Pull listing counts in parallel for each binder
-    const counts = await Promise.all((binders || []).map(b =>
-      window.sb.from('listings').select('id', { count: 'exact', head: true }).eq('binder_id', b.id)
-        .then(r => r.count ?? 0).catch(() => 0)
-    ));
-
     if (!binders || binders.length === 0) {
       countEl.textContent = 'No binders yet — create one to get started.';
       return;
     }
     countEl.textContent = `${binders.length} binder${binders.length === 1 ? '' : 's'}`;
 
-    binders.forEach((b, i) => {
-      const li = document.createElement('li');
-      li.className = 'binder-card';
-      const sleeve = b.sleeve_image_url
-        ? `<div class="binder-card-sleeve" style="background-image:url(${escapeAttr(b.sleeve_image_url)})"></div>`
-        : `<div class="binder-card-sleeve binder-card-sleeve-default">📓</div>`;
+    // Pull listing counts in parallel, keyed by binder id.
+    const countList = await Promise.all(binders.map(b =>
+      window.sb.from('listings').select('id', { count: 'exact', head: true }).eq('binder_id', b.id)
+        .then(r => r.count ?? 0).catch(() => 0)
+    ));
+    const countById = {};
+    binders.forEach((b, i) => { countById[b.id] = countList[i]; });
+
+    // Group by game, preserving GAME_ORDER and created_at order within a game.
+    const buckets = {};
+    binders.forEach(b => {
+      const g = GAME_ORDER.includes(b.category) ? b.category : 'optcg';
+      (buckets[g] = buckets[g] || []).push(b);
+    });
+
+    GAME_ORDER.filter(g => buckets[g] && buckets[g].length).forEach(g => {
+      wrap.appendChild(renderGroup(g, buckets[g], countById));
+    });
+  }
+
+  function renderGroup(game, binders, countById) {
+    const section = document.createElement('section');
+    section.className = 'binder-group';
+
+    const cards = binders.map(b => {
       const flair = b.flair || 'trade';
       const flairLabel = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
       const cat = b.category || 'optcg';
       const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon' }[cat] || 'OPTCG';
-      li.innerHTML = `
-        <a href="binder.html?id=${encodeURIComponent(b.id)}" class="binder-card-link">
-          ${sleeve}
-          <div class="binder-card-body">
-            <div class="binder-card-name">${escapeHtml(b.name)}</div>
-            <div class="binder-card-pills">
-              <span class="category-pill cat-${cat}">${escapeHtml(catLabel)}</span>
-              <span class="binder-flair-pill flair-${flair}">${escapeHtml(flairLabel)}</span>
+      const count = countById[b.id] || 0;
+      const sleeve = b.sleeve_image_url
+        ? `<div class="binder-card-sleeve" style="background-image:url(${escapeAttr(b.sleeve_image_url)})"></div>`
+        : `<div class="binder-card-sleeve binder-card-sleeve-default">📓</div>`;
+      return `
+        <li class="binder-card">
+          <a href="binder.html?id=${encodeURIComponent(b.id)}" class="binder-card-link">
+            ${sleeve}
+            <div class="binder-card-body">
+              <div class="binder-card-name">${escapeHtml(b.name)}</div>
+              <div class="binder-card-pills">
+                <span class="category-pill cat-${cat}">${escapeHtml(catLabel)}</span>
+                <span class="binder-flair-pill flair-${flair}">${escapeHtml(flairLabel)}</span>
+              </div>
+              <div class="binder-card-count">${count} listing${count === 1 ? '' : 's'}</div>
             </div>
-            <div class="binder-card-count">${counts[i]} listing${counts[i] === 1 ? '' : 's'}</div>
-          </div>
-        </a>`;
-      grid.appendChild(li);
-    });
+          </a>
+        </li>`;
+    }).join('');
+
+    section.innerHTML = `
+      <h3 class="binder-group-title">${escapeHtml(GAME_LABEL[game] || game)}</h3>
+      <ul class="binders-grid">${cards}</ul>`;
+    return section;
   }
 
   function escapeHtml(s) {
