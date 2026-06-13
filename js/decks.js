@@ -23,6 +23,8 @@
   let leaderArts = [];        // base + _p alt-art prints of the leader
   let artIdx = 0;             // current art (persisted per deck in localStorage)
   const artKey = (deckId) => `pawpaw:deckArt:${deckId}`;
+  let cardArt = {};           // base card code -> chosen alt-art row (deck-grid display override)
+  const cardArtKey = (deckId) => `pawpaw:deckCardArt:${deckId}`;
   let deckCards = [];         // deck_cards rows
   let cardInfo = {};          // card_code -> cards row
   let exceptions = {};        // card_code -> max_copies (null = unlimited, 0 = banned)
@@ -319,7 +321,31 @@
     setPill('edFormat', d.format || 'standard');
     $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
+
+    // Restore per-card alt-art choices set in the magnified view (deck-grid
+    // display overrides); fetch the chosen prints' images so the grid shows them.
+    cardArt = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(cardArtKey(d.id)) || '{}');
+      const codes = Object.values(saved).filter(x => /_p\d+$/i.test(String(x)));
+      if (codes.length) {
+        const { data: artRows } = await window.sb
+          .from('cards').select('card_code,image_url,image_url_lg').eq('game', GAME).in('card_code', codes);
+        const byCode = {};
+        (artRows || []).forEach(c => { byCode[c.card_code] = c; });
+        Object.keys(saved).forEach(base => { const row = byCode[saved[base]]; if (row) cardArt[base] = row; });
+      }
+    } catch (e) {}
+
     await reloadDeckCards();
+  }
+
+  // Persist the per-card alt-art overrides for this deck (base -> chosen code).
+  function persistCardArt() {
+    if (!deck) return;
+    const map = {};
+    Object.keys(cardArt).forEach(base => { if (cardArt[base]) map[base] = cardArt[base].card_code; });
+    try { localStorage.setItem(cardArtKey(deck.id), JSON.stringify(map)); } catch (e) {}
   }
 
   function applyLeaderArt() {
@@ -341,45 +367,189 @@
     const missing = deckCards.map(r => r.card_code).filter(c => !cardInfo[c]);
     if (missing.length) {
       const { data: cards } = await window.sb
-        .from('cards').select('card_code,name,color,cost,type,image_url')
+        .from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg')
         .eq('game', GAME).in('card_code', missing);
       (cards || []).forEach(c => { cardInfo[c.card_code] = c; });
     }
     renderDeck();
     refreshValidity();
+    cardZoom.refresh();
   }
 
   // Deck contents: one tile per unique card with a x1..x4 / X quantity
-  // badge; clicking a tile opens the qty/owned editor row beneath the grid.
-  let selectedCode = null;
+  // badge; tapping a tile opens the magnified view where qty/owned are edited.
   let holdJustFired = 0; // timestamp guard so a hold's release click is ignored
+  let ownMode = false;   // toggled by clicking "N missing": card +/- edit owned, not qty
+
+  // ---- Hover-magnify: a translucent magnifier overlays each card tile on
+  // hover; clicking it opens a full-size lightbox (Esc / click to close). ----
+  const ZOOM_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+  function zoomBtnHTML() {
+    return `<span class="card-act card-zoom" role="button" aria-label="Enlarge card">${ZOOM_ICON}</span>`;
+  }
+  const cardZoom = (() => {
+    // Swap-arrows icon for the alt-art toggle.
+    const ART_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+    let ov = null;
+    let code = null;   // card currently magnified
+    let arts = [];     // base print + its _p alt-art variants
+    let artIdx = 0;
+    const artsCache = {};
+    function hide() {
+      if (ov) { ov.hidden = true; code = null; arts = []; artIdx = 0; ov.querySelector('.cz-img').src = ''; }
+    }
+    // Qty/Owned steppers for a deck card — same markup + handlers as the inline
+    // editor, so hold-to-jump and the cap/owned rules carry over verbatim.
+    function editHTML(r) {
+      const cap = capFor(r.card_code);
+      return `
+        <div class="cz-name">${esc(r.card_code)}</div>
+        <div class="cz-steppers">
+          <div>
+            <span class="stepper-label">Qty</span>
+            <div class="stepper" data-kind="qty">
+              <button data-d="-1">−</button><input class="cz-val" type="number" inputmode="numeric" data-kind="qty" value="${r.quantity}" min="0"${cap !== null ? ` max="${cap}"` : ''}><button data-d="1" ${cap !== null && r.quantity >= cap ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+          <div>
+            <span class="stepper-label">Owned</span>
+            <div class="stepper ${r.owned >= r.quantity ? 'owned-full' : ''}" data-kind="owned">
+              <button data-d="-1" ${r.owned <= 0 ? 'disabled' : ''}>−</button><input class="cz-val" type="number" inputmode="numeric" data-kind="owned" value="${r.owned}" min="0" max="${r.quantity}"><span class="cz-of">/ ${r.quantity}</span><button data-d="1" ${r.owned >= r.quantity ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    function renderEdit() {
+      const box = ov.querySelector('.cz-edit');
+      const r = code ? deckCards.find(x => x.card_code === code) : null;
+      if (!r) { box.innerHTML = ''; box.style.display = 'none'; return; } // not a deck card → image only
+      box.style.display = '';
+      box.innerHTML = editHTML(r);
+      box.querySelectorAll('.stepper button').forEach(btn => wireStepper(btn, r.card_code));
+      // Type a number for a quick set (commit on Enter or blur).
+      box.querySelectorAll('.cz-val').forEach(inp => {
+        inp.addEventListener('change', () => setCardAbsolute(r.card_code, inp.dataset.kind, inp.value));
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+      });
+    }
+    function applyArt() {
+      if (!ov) return;
+      const a = arts[artIdx];
+      if (a) ov.querySelector('.cz-img').src = a.image_url_lg || a.image_url || '';
+      ov.querySelector('.cz-art').hidden = arts.length < 2; // only when alts exist
+    }
+    // Base print + _p variants for a card number (cached per session).
+    async function loadArts(base) {
+      if (artsCache[base]) return artsCache[base];
+      const { data } = await window.sb.from('cards')
+        .select('card_code,image_url,image_url_lg')
+        .eq('game', GAME).like('card_code', base + '%');
+      const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
+      const list = (data || []).filter(x => re.test(x.card_code)).sort((a, b) => a.card_code.localeCompare(b.card_code));
+      artsCache[base] = list;
+      return list;
+    }
+    function cycleArt() {
+      if (arts.length < 2) return;
+      artIdx = (artIdx + 1) % arts.length;
+      applyArt();
+      // Persist the choice and reflect it on the deck grid (index 0 = base = no override).
+      const base = String(arts[artIdx].card_code).split('_')[0];
+      if (artIdx === 0) delete cardArt[base];
+      else cardArt[base] = arts[artIdx];
+      persistCardArt();
+      renderDeck();
+    }
+    function ensure() {
+      if (ov) return ov;
+      ov = document.createElement('div');
+      ov.className = 'card-zoom-overlay';
+      ov.hidden = true;
+      ov.innerHTML = '<div class="cz-box"><div class="cz-imgwrap"><img class="cz-img" alt=""><span class="cz-art" role="button" aria-label="Swap art" hidden>' + ART_ICON + '</span></div><div class="cz-edit"></div></div>';
+      ov.addEventListener('click', e => { if (e.target === ov) hide(); }); // backdrop only
+      ov.querySelector('.cz-art').addEventListener('click', e => { e.stopPropagation(); cycleArt(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
+      document.body.appendChild(ov);
+      return ov;
+    }
+    async function show(c) {
+      const base = String(c.card_code).split('_')[0];
+      const override = cardArt[base]; // open on the currently-chosen art, if any
+      const url = (override && (override.image_url_lg || override.image_url)) || (c && (c.image_url_lg || c.image_url));
+      if (!url) return;
+      const el = ensure();
+      code = c.card_code;
+      arts = []; artIdx = 0;
+      el.querySelector('.cz-img').src = url;
+      el.querySelector('.cz-art').hidden = true;
+      renderEdit();
+      el.hidden = false;
+      // Reveal the alt-art swap overlay once we know more than the base exists.
+      const list = await loadArts(base);
+      if (code !== c.card_code) return; // another card opened during the await
+      arts = list;
+      const chosen = override ? override.card_code : c.card_code;
+      artIdx = Math.max(0, list.findIndex(a => a.card_code === chosen));
+      applyArt();
+    }
+    // Keep the open lightbox in sync after a deck-cards reload; close it if the
+    // magnified card was removed (qty stepped to 0).
+    function refresh() {
+      if (!ov || ov.hidden || !code) return;
+      if (!deckCards.find(x => x.card_code === code)) { hide(); return; }
+      renderEdit();
+    }
+    return { show, refresh };
+  })();
+
+  // Wire a tile's magnifier so it zooms without triggering the tile's own
+  // click (select in the deck grid / add in the browser).
+  function wireZoom(tile, card) {
+    const z = tile.querySelector('.card-zoom');
+    if (z) z.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); cardZoom.show(card); });
+  }
 
   function renderDeck() {
     const grid = $('edDeckGrid');
     grid.innerHTML = '';
 
     const sorted = deckCards.slice().sort(byCostThenCode);
-    if (!sorted.some(r => r.card_code === selectedCode)) selectedCode = null;
 
     sorted.forEach(r => {
       const c = cardInfo[r.card_code] || {};
       const tile = document.createElement('div');
       tile.className = 'deck-card-tile'
-        + (r.card_code === selectedCode ? ' selected' : '')
         + (r.owned < r.quantity ? ' missing' : ''); // owned-short → highlightable
       tile.title = `${c.name || r.card_code} — ${r.quantity} in deck, ${r.owned} owned`;
-      // Badge shows total qty normally; while hovering "N missing" the
+      // Card +/- adjust quantity normally; in owned-edit mode (toggled by
+      // clicking "N missing") they adjust how many copies you own instead.
+      const cap = capFor(r.card_code);
+      const kind = ownMode ? 'owned' : 'qty';
+      const incBlocked = ownMode ? r.owned >= r.quantity : (cap !== null && r.quantity >= cap);
+      const decBlocked = ownMode ? r.owned <= 0 : false; // qty − never blocked (deletes at 1)
+      const decLabel = ownMode ? 'Own one fewer' : 'Remove one';
+      const incLabel = ownMode ? 'Own one more' : 'Add one';
+      const incTitle = ownMode ? 'All copies owned' : 'Max copies in deck';
+      // Badge shows total qty normally; while highlighting missing the
       // owned-short tiles swap to their missing count (highlighted).
+      const art = cardArt[r.card_code]; // chosen alt-art print (set in magnified view)
       tile.innerHTML = `
-        <img src="${esc(c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
+        <img src="${esc((art && art.image_url) || c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
+        <div class="card-acts">
+          <button class="card-act qty-dec${decBlocked ? ' at-cap' : ''}" aria-label="${decLabel}"${decBlocked ? ' aria-disabled="true" title="None owned"' : ''}>−</button>
+          ${zoomBtnHTML()}
+          <button class="card-act qty-inc${incBlocked ? ' at-cap' : ''}" aria-label="${incLabel}"${incBlocked ? ` aria-disabled="true" title="${incTitle}"` : ''}>+</button>
+        </div>
         <span class="qty-badge">
           <span class="qty-total">${r.quantity > 4 ? 'X' : 'x' + r.quantity}</span>
           <span class="qty-missing">x${r.quantity - r.owned}</span>
         </span>`;
-      tile.addEventListener('click', () => {
-        selectedCode = selectedCode === r.card_code ? null : r.card_code;
-        renderDeck();
-      });
+      // Tap a card to open the magnified view, where qty/owned are edited.
+      tile.addEventListener('click', () => cardZoom.show(c));
+      wireZoom(tile, c);
+      // Inline ±1 (stopPropagation so the tile's zoom click doesn't fire).
+      tile.querySelector('.qty-dec').addEventListener('click', e => { e.stopPropagation(); if (decBlocked) return; stepCard(r.card_code, kind, -1); });
+      tile.querySelector('.qty-inc').addEventListener('click', e => { e.stopPropagation(); if (incBlocked) return; stepCard(r.card_code, kind, 1); });
       grid.appendChild(tile);
     });
 
@@ -390,35 +560,6 @@
       ph.className = 'deck-card-tile empty-slot';
       grid.appendChild(ph);
     }
-    renderCardEdit();
-  }
-
-  function renderCardEdit() {
-    const box = $('edCardEdit');
-    const r = deckCards.find(x => x.card_code === selectedCode);
-    if (!r) { box.style.display = 'none'; box.innerHTML = ''; return; }
-    const c = cardInfo[r.card_code] || {};
-    const cap = capFor(r.card_code);
-    box.style.display = '';
-    box.innerHTML = `
-      <img src="${esc(c.image_url || '')}" alt="">
-      <div class="row-main">
-        <div class="row-name">${esc(c.name || r.card_code)}</div>
-        <div class="row-sub">${esc(r.card_code)} · ${esc(c.color || '')} · cost ${c.cost ?? '—'}</div>
-      </div>
-      <div>
-        <span class="stepper-label">Qty</span>
-        <div class="stepper" data-kind="qty">
-          <button data-d="-1">−</button><span class="val">${r.quantity}</span><button data-d="1" ${cap !== null && r.quantity >= cap ? 'disabled' : ''}>+</button>
-        </div>
-      </div>
-      <div>
-        <span class="stepper-label">Owned</span>
-        <div class="stepper ${r.owned >= r.quantity ? 'owned-full' : ''}" data-kind="owned">
-          <button data-d="-1" ${r.owned <= 0 ? 'disabled' : ''}>−</button><span class="val">${r.owned}/${r.quantity}</span><button data-d="1" ${r.owned >= r.quantity ? 'disabled' : ''}>+</button>
-        </div>
-      </div>`;
-    box.querySelectorAll('.stepper button').forEach(btn => wireStepper(btn, r.card_code));
   }
 
   // Click = ±1; press-and-hold (~450ms) jumps to min/max.
@@ -493,6 +634,37 @@
       if (o === row.owned) return;
       const { error } = await window.sb.from('deck_cards')
         .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+      if (error) { $('edError').textContent = error.message; return; }
+    }
+    await reloadDeckCards();
+  }
+
+  // Set an exact value from typed input (magnified-view qty/owned fields).
+  // qty: clamped to [0, cap] (0 removes the card); owned: clamped to [0, qty].
+  async function setCardAbsolute(code, kind, value) {
+    const row = deckCards.find(r => r.card_code === code);
+    if (!row) return;
+    let n = parseInt(value, 10);
+    if (isNaN(n)) return; // ignore non-numeric input
+    $('edError').textContent = '';
+    if (kind === 'qty') {
+      const cap = capFor(code);
+      n = Math.max(0, cap !== null ? Math.min(n, cap) : n);
+      if (n === row.quantity) return;
+      if (n <= 0) {
+        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
+        if (error) { $('edError').textContent = error.message; return; }
+      } else {
+        const { error } = await window.sb.from('deck_cards')
+          .update({ quantity: n, owned: Math.min(row.owned, n) })
+          .eq('deck_id', deck.id).eq('card_code', code);
+        if (error) { $('edError').textContent = error.message; return; }
+      }
+    } else {
+      n = Math.max(0, Math.min(row.quantity, n));
+      if (n === row.owned) return;
+      const { error } = await window.sb.from('deck_cards')
+        .update({ owned: n }).eq('deck_id', deck.id).eq('card_code', code);
       if (error) { $('edError').textContent = error.message; return; }
     }
     await reloadDeckCards();
@@ -592,7 +764,7 @@
       .map(c => `color.ilike.%${c}%`).join(',');
     let q = window.sb
       .from('cards')
-      .select('card_code,name,color,cost,type,image_url')
+      .select('card_code,name,color,cost,type,image_url,image_url_lg')
       .eq('game', GAME).neq('type', 'LEADER')
       .order('release_order', { ascending: false })
       .range(cbFrom, cbFrom + CB_FETCH - 1);
@@ -667,10 +839,11 @@
       tile.innerHTML = `
         <div class="cb-tile-img">${c.image_url
           ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(c.image_url)}" alt="${esc(c.name || c.card_code)}">`
-          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}</div>
+          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}${c.image_url ? `<div class="card-acts">${zoomBtnHTML()}</div>` : ''}</div>
         <div class="cb-tile-name">${esc(c.name || '')}${inDeck ? ` <span class="cb-in-deck">x${inDeck.quantity}</span>` : ''}</div>
         <div class="cb-tile-code">${esc(c.card_code)}</div>`;
       tile.addEventListener('click', () => addCard(c));
+      wireZoom(tile, c);
       grid.appendChild(tile);
     });
     $('cbMore').style.display = hasMore ? '' : 'none';
@@ -698,19 +871,34 @@
     if (!v) return;
     const total = v.total_cards ?? 0;
     const miss = v.missing_cards ?? 0;
+    if (!miss) ownMode = false; // nothing missing → leave owned-edit mode
     $('edCounts').innerHTML = `${total}/50 cards · ${v.owned_cards ?? 0} owned · `
       + `<span id="edMissingHover"${miss ? ' class="missing-hover"' : ''}>${miss} missing</span>`;
+    const dg = $('edDeckGrid');
+    // Clicking "N missing" keeps the same focus as hovering it (missing cards
+    // highlighted, the rest greyed) and switches the card +/- to edit owned;
+    // as copies become owned, those cards drop out of "missing" and grey out.
+    dg.classList.toggle('show-missing', ownMode);
     if (miss) {
       const hov = $('edMissingHover');
-      hov.addEventListener('mouseenter', () => $('edDeckGrid').classList.add('show-missing'));
-      hov.addEventListener('mouseleave', () => $('edDeckGrid').classList.remove('show-missing'));
+      hov.classList.toggle('active', ownMode);
+      hov.addEventListener('mouseenter', () => dg.classList.add('show-missing'));
+      hov.addEventListener('mouseleave', () => { if (!ownMode) dg.classList.remove('show-missing'); });
+      hov.addEventListener('click', () => {
+        ownMode = !ownMode;
+        dg.classList.toggle('show-missing', ownMode);
+        hov.classList.toggle('active', ownMode);
+        renderDeck();
+      });
     }
     const fill = $('edCountFill');
     fill.style.width = `${Math.min(100, (total / 50) * 100)}%`;
     fill.classList.toggle('over', total > 50);
+    fill.classList.toggle('ok', total <= 50 && v.valid && v.owned_complete); // green only when valid + fully owned
 
     const badges = [];
-    if (v.valid) badges.push('<span class="deck-badge ok">deck valid</span>');
+    // "deck valid" reads warm orangish-green until fully owned, then full green.
+    if (v.valid) badges.push(`<span class="deck-badge ${v.owned_complete ? 'ok' : 'partial'}">deck valid</span>`);
     if (v.owned_complete) badges.push('<span class="deck-badge ok">fully owned</span>');
     $('edBadges').innerHTML = badges.join(' ');
 
