@@ -104,8 +104,6 @@
     .cb-filters .filter-group { margin-bottom:0; flex:1 1 130px; }
     .cb-filters .btn { flex:0 0 auto; }
     .cb-filters .cb-owned { display:flex; flex:0 0 auto; margin-left:auto; margin-right:0; position:relative; }
-    .cb-owned-tip { position:absolute; bottom:calc(100% + 8px); right:0; width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; color:var(--text-secondary,#c4b9ad); display:none; z-index:60; box-shadow:0 4px 14px rgba(0,0,0,.4); pointer-events:none; }
-    .cb-owned:hover .cb-owned-tip { display:block; }
     .cb-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:.85rem; margin-top:1rem; }
     @media (max-width:760px) { .cb-grid { grid-template-columns:repeat(3, minmax(0,1fr)); } }
     .cb-in-deck { color:#7ec96a; }
@@ -115,8 +113,12 @@
     .cb-trait-list li:hover { background:var(--bg-card-hover,#322e50); }
     .dl-text { height:auto; font-family:ui-monospace, Consolas, monospace; font-size:.82rem; resize:vertical; }
     .dl-action-row { display:flex; align-items:center; justify-content:flex-end; gap:1rem; margin-top:1.25rem; }
-    .dl-owned { display:none; align-items:center; gap:.45rem; font-size:.8rem; color:var(--text-secondary,#c4b9ad); cursor:pointer; margin-right:auto; }
+    .dl-owned { display:none; align-items:center; gap:.45rem; font-size:.8rem; color:var(--text-secondary,#c4b9ad); cursor:pointer; margin-right:auto; position:relative; }
     .dl-owned input { accent-color:var(--accent,#c9956a); cursor:pointer; }
+    .owned-tip { position:absolute; bottom:calc(100% + 8px); width:max-content; max-width:230px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; padding:.5rem .7rem; font-size:.72rem; line-height:1.45; color:var(--text-secondary,#c4b9ad); display:none; z-index:60; box-shadow:0 4px 14px rgba(0,0,0,.4); pointer-events:none; }
+    .dl-owned .owned-tip { left:0; }
+    .cb-owned .owned-tip { right:0; }
+    .dl-owned:hover .owned-tip, .cb-owned:hover .owned-tip { display:block; }
   </style>
 </head>
 <body>
@@ -314,7 +316,7 @@
             <button class="btn" id="cbClear">Clear</button>
             <label class="dl-owned cb-owned">
               <input type="checkbox" id="cbOwned"> Owned
-              <span class="cb-owned-tip">Marks every card you add as already owned, so it won't show as missing or get pushed to your wishlist.</span>
+              <span class="owned-tip">Marks every card you add as already owned, so it won't show as missing or get pushed to your wishlist.</span>
             </label>
           </div>
           <p class="auth-error" id="cbError"></p>
@@ -338,6 +340,7 @@
           <div class="dl-action-row" id="dlActionRow">
             <label class="dl-owned" id="dlOwnedWrap">
               <input type="checkbox" id="dlOwned"> I own all these cards
+              <span class="owned-tip">Imports every card already marked as owned, so the deck won't list them as missing or push them to your wishlist.</span>
             </label>
             <button class="btn btn-filled" id="dlAction">Copy</button>
           </div>
