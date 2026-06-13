@@ -187,9 +187,7 @@
           <div class="deck-tile-body">
             <div class="deck-tile-name">${esc(d.name)}</div>
             <div class="deck-tile-meta">
-              <span>${esc(L.color || '')}</span>
-              <span>${v.total_cards ?? '?'}/50</span>
-              ${v.valid ? '<span class="deck-badge ok">valid</span>' : '<span class="deck-badge bad">in progress</span>'}
+              ${v.valid ? '<span class="deck-badge ok">valid</span>' : '<span class="deck-badge bad">cooking</span>'}
               ${d.format === 'eternal' ? '<span class="deck-badge etern">eternal</span>' : ''}
               ${d.is_public ? `<span class="deck-badge pub">${esc(d.listing_type || 'public')}</span>` : ''}
             </div>
@@ -253,7 +251,8 @@
     const { data, error } = await window.sb
       .from('decks')
       .insert({ user_id: user.id, game: GAME, leader_card_code: leader.card_code,
-                name: `${leader.name} Deck`, format: pillValue('ndFormat') || 'standard' })
+                name: `${leader.color ? leader.color + ' ' : ''}${leader.name} Deck`,
+                format: pillValue('ndFormat') || 'standard' })
       .select('id').single();
     if (error) {
       if (error.code === '23505' && /one_deck_per_leader/.test(error.message || '')) {
