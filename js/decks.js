@@ -364,7 +364,9 @@
     sorted.forEach(r => {
       const c = cardInfo[r.card_code] || {};
       const tile = document.createElement('div');
-      tile.className = 'deck-card-tile' + (r.card_code === selectedCode ? ' selected' : '');
+      tile.className = 'deck-card-tile'
+        + (r.card_code === selectedCode ? ' selected' : '')
+        + (r.owned < r.quantity ? ' missing' : ''); // owned-short → highlightable
       tile.title = `${c.name || r.card_code} — ${r.quantity} in deck, ${r.owned} owned`;
       tile.innerHTML = `
         <img src="${esc(c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
@@ -689,7 +691,14 @@
     const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: deck.id });
     if (!v) return;
     const total = v.total_cards ?? 0;
-    $('edCounts').textContent = `${total}/50 cards · ${v.owned_cards ?? 0} owned · ${v.missing_cards ?? 0} missing`;
+    const miss = v.missing_cards ?? 0;
+    $('edCounts').innerHTML = `${total}/50 cards · ${v.owned_cards ?? 0} owned · `
+      + `<span id="edMissingHover"${miss ? ' class="missing-hover"' : ''}>${miss} missing</span>`;
+    if (miss) {
+      const hov = $('edMissingHover');
+      hov.addEventListener('mouseenter', () => $('edDeckGrid').classList.add('show-missing'));
+      hov.addEventListener('mouseleave', () => $('edDeckGrid').classList.remove('show-missing'));
+    }
     const fill = $('edCountFill');
     fill.style.width = `${Math.min(100, (total / 50) * 100)}%`;
     fill.classList.toggle('over', total > 50);
