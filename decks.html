@@ -111,6 +111,9 @@
     .cb-trait-list li { padding:.45rem .7rem; font-size:.8rem; cursor:pointer; }
     .cb-trait-list li:hover { background:var(--bg-card-hover,#322e50); }
     .dl-text { height:auto; font-family:ui-monospace, Consolas, monospace; font-size:.82rem; resize:vertical; }
+    .dl-action-row { display:flex; align-items:center; justify-content:flex-end; gap:1rem; margin-top:1.25rem; }
+    .dl-owned { display:none; align-items:center; gap:.45rem; font-size:.8rem; color:var(--text-secondary,#c4b9ad); cursor:pointer; margin-right:auto; }
+    .dl-owned input { accent-color:var(--accent,#c9956a); cursor:pointer; }
   </style>
 </head>
 <body>
@@ -325,7 +328,10 @@
           <div class="form-group">
             <textarea class="form-input dl-text" id="dlText" rows="14" spellcheck="false"></textarea>
           </div>
-          <div style="display:flex; gap:1rem;">
+          <div class="dl-action-row" id="dlActionRow">
+            <label class="dl-owned" id="dlOwnedWrap">
+              <input type="checkbox" id="dlOwned"> I own all these cards
+            </label>
             <button class="btn btn-filled" id="dlAction">Copy</button>
           </div>
           <p class="auth-error" id="dlError"></p>

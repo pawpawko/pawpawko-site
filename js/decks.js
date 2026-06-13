@@ -843,6 +843,7 @@
     $('dlText').value = [`1x${deck.leader_card_code}`, ...sorted.map(r => `${r.quantity}x${r.card_code}`)].join('\n');
     $('dlText').readOnly = true;
     $('dlAction').textContent = 'Copy';
+    $('dlOwnedWrap').style.display = 'none'; // export has no owned toggle
     $('dlOverlay').style.display = '';
   }
 
@@ -854,6 +855,8 @@
     $('dlText').value = '';
     $('dlText').readOnly = false;
     $('dlAction').textContent = 'Import';
+    $('dlOwned').checked = false;
+    $('dlOwnedWrap').style.display = 'flex';
     $('dlOverlay').style.display = '';
     $('dlText').focus();
   }
@@ -889,13 +892,14 @@
       }
       rows.delete(code); // matching leader line: implied, drop it
     }
+    const markOwned = $('dlOwned').checked; // owned = quantity for every line
     $('dlAction').disabled = true;
     await window.sb.from('deck_cards').delete().eq('deck_id', deck.id);
     const fails = [];
     for (const [code, qty] of rows) {
       cardInfo[code] = info[code];
       const { error } = await window.sb.from('deck_cards')
-        .insert({ deck_id: deck.id, card_code: code, quantity: qty });
+        .insert({ deck_id: deck.id, card_code: code, quantity: qty, owned: markOwned ? qty : 0 });
       if (error) fails.push(`${code}: ${error.message}`);
     }
     $('dlAction').disabled = false;
