@@ -275,7 +275,10 @@ renderAuthButton();
     try { user = await window.PK.currentUser(); } catch (e) {}
     if (!user) return;        // signed-in users only
     buildUI();
-    window.sb.rpc('prune_notifications').catch(() => {}); // drop >2wk-read notices
+    // Best-effort prune of >2wk-read notices. The supabase builder is a
+    // thenable without .catch(), so swallow errors via then's 2nd arg — and
+    // never let it block the bell from loading.
+    window.sb.rpc('prune_notifications').then(() => {}, () => {});
     await load();
     // Instant updates via Realtime (requires public.notifications in the
     // supabase_realtime publication — scripts/realtime_migration.sql). RLS
