@@ -283,7 +283,11 @@ if (window.SB_READY) {
   let firstFired = false;
   window.sb.auth.onAuthStateChange((event, session) => {
     if (!firstFired) { firstFired = true; return; }
-    if (event === 'SIGNED_IN' && session) {
+    // TOKEN_REFRESHED fires when the SDK silently renews an expired access token
+    // from the stored refresh token — the "remembered login" case. Treat it like
+    // SIGNED_IN so the nav reflects the signed-in state without needing the user
+    // to interact with the page first.
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
       document.documentElement.classList.add('is-signed-in');
       const ml = document.getElementById('mobileAuthLink');
       if (ml) ml.textContent = 'Account';
