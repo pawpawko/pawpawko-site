@@ -21,6 +21,10 @@ create table if not exists public.notifications (
 );
 create index if not exists notifications_user_idx
   on public.notifications (user_id, created_at desc);
+-- When a notification was first viewed (read). Drives the 2-week auto-prune.
+alter table public.notifications add column if not exists read_at timestamptz;
+-- Backfill legacy already-read rows so they too become prunable.
+update public.notifications set read_at = created_at where read and read_at is null;
 
 alter table public.notifications enable row level security;
 -- Recipients can read their own; all writes happen through SECURITY DEFINER RPCs
@@ -139,8 +143,34 @@ drop function if exists public.mark_notifications_read();
 create or replace function public.mark_notifications_read()
 returns void
 language sql security definer set search_path = public as $$
-  update public.notifications set read = true
+  update public.notifications set read = true, read_at = now()
    where user_id = auth.uid() and read = false;
 $$;
 revoke all on function public.mark_notifications_read() from public;
 grant execute on function public.mark_notifications_read() to authenticated;
+
+-- ---------- dismiss a single notification (the × button) ----------
+drop function if exists public.dismiss_notification(uuid);
+create or replace function public.dismiss_notification(p_notification_id uuid)
+returns void
+language sql security definer set search_path = public as $$
+  delete from public.notifications
+   where id = p_notification_id and user_id = auth.uid();
+$$;
+revoke all on function public.dismiss_notification(uuid) from public;
+grant execute on function public.dismiss_notification(uuid) to authenticated;
+
+-- ---------- auto-prune: drop the caller's notifications read >2 weeks ago ----------
+-- Called best-effort on each bell load, so no cron is required; unread
+-- notifications never expire (only "two weeks after viewed").
+drop function if exists public.prune_notifications();
+create or replace function public.prune_notifications()
+returns void
+language sql security definer set search_path = public as $$
+  delete from public.notifications
+   where user_id = auth.uid()
+     and read and read_at is not null
+     and read_at < now() - interval '14 days';
+$$;
+revoke all on function public.prune_notifications() from public;
+grant execute on function public.prune_notifications() to authenticated;

@@ -187,54 +187,64 @@ renderAuthButton();
     if (!notifs.length) { list.innerHTML = '<div class="nav-notif-empty">No notifications yet.</div>'; return; }
     list.innerHTML = notifs.map(n => {
       const d = n.data || {};
+      let inner = '', deckId = '';
       // ---- Binder sharing ----
       if (n.type === 'binder_invite' && n.status === 'pending') {
-        return `<div class="nav-notif-item">
-          <div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their binder <strong>${esc(d.binder_name)}</strong> with you.</div>
+        inner = `<div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their binder <strong>${esc(d.binder_name)}</strong> with you.</div>
           <div class="nav-notif-actions">
             <button class="btn small notif-accept" data-id="${n.id}" data-kind="binder">Accept</button>
             <button class="btn small notif-decline" data-id="${n.id}" data-kind="binder">Decline</button>
-          </div></div>`;
-      }
-      if (n.type === 'binder_invite') {
-        return `<div class="nav-notif-item"><div class="nav-notif-text">You ${esc(n.status)} sharing <strong>${esc(d.binder_name)}</strong>.</div></div>`;
-      }
-      if (n.type === 'binder_invite_accepted') {
-        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared binder <strong>${esc(d.binder_name)}</strong>.</div></div>`;
-      }
-      if (n.type === 'binder_invite_declined') {
-        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared binder <strong>${esc(d.binder_name)}</strong>.</div></div>`;
-      }
+          </div>`;
+      } else if (n.type === 'binder_invite') {
+        inner = `<div class="nav-notif-text">You ${esc(n.status)} sharing <strong>${esc(d.binder_name)}</strong>.</div>`;
+      } else if (n.type === 'binder_invite_accepted') {
+        inner = `<div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared binder <strong>${esc(d.binder_name)}</strong>.</div>`;
+      } else if (n.type === 'binder_invite_declined') {
+        inner = `<div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared binder <strong>${esc(d.binder_name)}</strong>.</div>`;
       // ---- Deck sharing ----
-      if (n.type === 'deck_invite' && n.status === 'pending') {
-        return `<div class="nav-notif-item">
-          <div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their deck <strong>${esc(d.deck_name)}</strong> with you.</div>
+      } else if (n.type === 'deck_invite' && n.status === 'pending') {
+        inner = `<div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their deck <strong>${esc(d.deck_name)}</strong> with you.</div>
           <div class="nav-notif-actions">
             <button class="btn small notif-accept" data-id="${n.id}" data-kind="deck">Accept</button>
             <button class="btn small notif-decline" data-id="${n.id}" data-kind="deck">Decline</button>
-          </div></div>`;
-      }
-      if (n.type === 'deck_invite') {
-        return `<div class="nav-notif-item"><div class="nav-notif-text">You ${esc(n.status)} sharing deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
-      }
-      if (n.type === 'deck_invite_accepted') {
-        return `<div class="nav-notif-item nav-notif-link" data-deck="${esc(d.deck_id)}"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
-      }
-      if (n.type === 'deck_invite_declined') {
-        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
-      }
-      if (n.type === 'deck_card_collected') {
+          </div>`;
+      } else if (n.type === 'deck_invite') {
+        inner = `<div class="nav-notif-text">You ${esc(n.status)} sharing deck <strong>${esc(d.deck_name)}</strong>.</div>`;
+      } else if (n.type === 'deck_invite_accepted') {
+        inner = `<div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared deck <strong>${esc(d.deck_name)}</strong>.</div>`;
+        deckId = d.deck_id || '';
+      } else if (n.type === 'deck_invite_declined') {
+        inner = `<div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared deck <strong>${esc(d.deck_name)}</strong>.</div>`;
+      } else if (n.type === 'deck_card_collected') {
         const qty = Number(d.qty) > 1 ? ` ×${esc(d.qty)}` : '';
-        return `<div class="nav-notif-item nav-notif-link" data-deck="${esc(d.deck_id)}"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> got <strong>${esc(d.card_name)}</strong>${qty} — <strong>${esc(d.deck_name)}</strong> and your wishlist updated.</div></div>`;
+        inner = `<div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> got <strong>${esc(d.card_name)}</strong>${qty} — <strong>${esc(d.deck_name)}</strong> and your wishlist updated.</div>`;
+        deckId = d.deck_id || '';
+      } else {
+        return '';
       }
-      return '';
+      const linkCls = deckId ? ' nav-notif-link' : '';
+      const deckAttr = deckId ? ` data-deck="${esc(deckId)}"` : '';
+      return `<div class="nav-notif-item${linkCls}"${deckAttr}>
+          <button class="nav-notif-dismiss" data-id="${n.id}" aria-label="Dismiss" title="Dismiss">×</button>
+          ${inner}
+        </div>`;
     }).join('');
-    list.querySelectorAll('.notif-accept').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, true, b.dataset.kind)));
-    list.querySelectorAll('.notif-decline').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, false, b.dataset.kind)));
+    list.querySelectorAll('.notif-accept').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); respond(b.dataset.id, true, b.dataset.kind); }));
+    list.querySelectorAll('.notif-decline').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); respond(b.dataset.id, false, b.dataset.kind); }));
+    // × dismiss — stop propagation so it never triggers the deck-link navigation.
+    list.querySelectorAll('.nav-notif-dismiss').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); dismiss(b.dataset.id); }));
     // Clicking a deck-related notice opens that deck.
     list.querySelectorAll('.nav-notif-link').forEach(el => el.addEventListener('click', () => {
       if (el.dataset.deck) window.location.href = 'decks.html?deck=' + encodeURIComponent(el.dataset.deck);
     }));
+  }
+
+  async function dismiss(id) {
+    const { error } = await window.sb.rpc('dismiss_notification', { p_notification_id: id });
+    if (error) { alert(error.message); return; }
+    notifs = notifs.filter(n => n.id !== id);  // optimistic remove
+    renderBadge();
+    renderList();
   }
 
   async function respond(id, accept, kind) {
@@ -265,6 +275,7 @@ renderAuthButton();
     try { user = await window.PK.currentUser(); } catch (e) {}
     if (!user) return;        // signed-in users only
     buildUI();
+    window.sb.rpc('prune_notifications').catch(() => {}); // drop >2wk-read notices
     await load();
     // Instant updates via Realtime (requires public.notifications in the
     // supabase_realtime publication — scripts/realtime_migration.sql). RLS

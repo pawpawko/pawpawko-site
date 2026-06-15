@@ -2499,8 +2499,10 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 }
 .nav-notif-list { max-height: 60vh; overflow-y: auto; }
 .nav-notif-empty { padding: 1rem; color: var(--text-muted); font-size: 0.85rem; }
-.nav-notif-item { padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
+.nav-notif-item { position: relative; padding: 0.8rem 2rem 0.8rem 1rem; border-bottom: 1px solid var(--border); }
 .nav-notif-item:last-child { border-bottom: none; }
+.nav-notif-dismiss { position: absolute; top: 0.45rem; right: 0.5rem; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 0.1rem 0.3rem; }
+.nav-notif-dismiss:hover { color: var(--text-primary); }
 .nav-notif-text { font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); }
 .nav-notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 .nav-notif-link { cursor: pointer; }
