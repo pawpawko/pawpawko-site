@@ -72,7 +72,7 @@ create or replace function public.respond_binder_invite(p_notification_id uuid, 
 returns void
 language plpgsql security definer set search_path = public as $$
 declare n public.notifications; v_binder uuid; v_from uuid;
-        v_flair text; v_cat text; v_name text; v_by text;
+        v_flair text; v_cat text; v_name text; v_by text; v_old uuid;
 begin
   select * into n from public.notifications
    where id = p_notification_id and user_id = auth.uid() and type = 'binder_invite';
@@ -93,11 +93,29 @@ begin
     if exists (select 1 from public.binder_collaborators c where c.binder_id = v_binder) then
       raise exception 'This binder already has a partner';
     end if;
-    -- Overwrite: the partner now uses the shared trade binder, so drop their own
-    -- trade binder of the same game (the UI warns before this runs).
-    if v_flair = 'trade' then
-      delete from public.binders
-       where user_id = auth.uid() and category = v_cat and flair = 'trade';
+    -- Merge (non-destructive): fold the partner's own trade binder for this game
+    -- into the shared binder instead of deleting it, so no cards are lost. The
+    -- couple then co-edits the single shared binder.
+    select id into v_old from public.binders
+     where user_id = auth.uid() and category = v_cat and flair = 'trade'
+     limit 1;
+    if v_old is not null and v_old is distinct from v_binder then
+      -- 1. Overlapping cards: add the partner's quantity onto the shared row.
+      update public.listings sh
+         set quantity = sh.quantity + ov.qty
+        from (select card_code, sum(quantity) as qty
+                from public.listings where binder_id = v_old group by card_code) ov
+       where sh.binder_id = v_binder and sh.card_code = ov.card_code;
+      -- 2. Drop the partner's rows that were just folded in.
+      delete from public.listings
+       where binder_id = v_old
+         and card_code in (select card_code from public.listings where binder_id = v_binder);
+      -- 3. Move the remaining (non-overlapping) cards into the shared binder;
+      --    null sort_order so they append at the end of the existing layout.
+      update public.listings set binder_id = v_binder, sort_order = null
+       where binder_id = v_old;
+      -- 4. The partner's old binder is now empty — remove it.
+      delete from public.binders where id = v_old;
     end if;
     insert into public.binder_collaborators (binder_id, user_id, added_by)
     values (v_binder, auth.uid(), v_from)

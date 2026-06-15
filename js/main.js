@@ -211,7 +211,7 @@ renderAuthButton();
   }
 
   async function respond(id, accept) {
-    if (accept && !confirm('Accepting REPLACES your existing trade binder for that game with this shared binder — your current trade binder and its cards will be removed. Continue?')) return;
+    if (accept && !confirm("Accepting MERGES your own trade binder for that game into this shared binder — your cards move into it and you'll co-edit it together. Your separate trade binder is then removed. Continue?")) return;
     const { error } = await window.sb.rpc('respond_binder_invite', { p_notification_id: id, p_accept: accept });
     if (error) { alert(error.message); return; }
     await load();
