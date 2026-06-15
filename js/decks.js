@@ -305,6 +305,7 @@
 
   function showList(fromPop = false) {
     if (!fromPop) history.replaceState(null, '', 'decks.html');
+    unsubscribeDeckCards();        // drop the editor's Realtime channel
     $('editorWrap').style.display = 'none';
     $('decksWrap').style.display = '';
     deck = null;
@@ -375,6 +376,38 @@
     await loadOwnedElsewhere();
     if (seq !== openSeq) return;
     await reloadDeckCards();
+    subscribeDeckCardsRealtime();  // live co-edit for shared decks
+  }
+
+  // ---- Shared decks: live co-edit via Realtime. A partner's deck-card
+  // change refreshes this editor instantly. Events are ignored while a LOCAL
+  // edit burst is in flight (dcPending > 0) — queueDeckWrite's settle already
+  // re-reads the authoritative state — so live sync never clobbers optimistic
+  // edits mid-burst. Requires public.deck_cards in the Realtime publication
+  // (scripts/realtime_migration.sql). ----
+  let deckCardsChannel = null;
+  let deckReloadTimer = null;
+  function subscribeDeckCardsRealtime() {
+    if (!window.sb || !window.sb.channel || !deck) return;
+    unsubscribeDeckCards();
+    const myId = deck.id;
+    deckCardsChannel = window.sb
+      .channel('deckcards-' + myId)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'deck_cards', filter: 'deck_id=eq.' + myId },
+        () => {
+          if (dcPending > 0) return;             // local burst in flight; settle reconciles
+          if (!deck || deck.id !== myId) return; // switched decks
+          clearTimeout(deckReloadTimer);
+          deckReloadTimer = setTimeout(() => {
+            if (dcPending === 0 && deck && deck.id === myId) reloadDeckCards();
+          }, 300);
+        })
+      .subscribe();
+  }
+  function unsubscribeDeckCards() {
+    if (deckReloadTimer) { clearTimeout(deckReloadTimer); deckReloadTimer = null; }
+    if (deckCardsChannel) { try { window.sb.removeChannel(deckCardsChannel); } catch (e) {} deckCardsChannel = null; }
   }
 
   // ---- Shared decks: invite/manage the partner (couples) ----
