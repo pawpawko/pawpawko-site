@@ -644,7 +644,11 @@ begin
 
   insert into public.profiles (user_id, display_name, discord_handle)
   values (new.id, v_display_name, v_discord_handle);
-  insert into public.binders (user_id, name) values (new.id, 'My Binder');
+  -- NOTE: we deliberately do NOT auto-create a binder here. The binders table
+  -- defaults flair='trade'/category='optcg', so a bare insert produced an
+  -- unwanted OPTCG trade binder for every new user. Users create their own
+  -- binders via the My Binders add-binder flow (and the wishlist binder is
+  -- auto-created on demand when a card is wished).
   return new;
 end; $$;
 
