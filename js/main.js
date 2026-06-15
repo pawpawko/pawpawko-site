@@ -266,7 +266,18 @@ renderAuthButton();
     if (!user) return;        // signed-in users only
     buildUI();
     await load();
-    setInterval(load, 60000); // light poll so the badge updates without a reload
+    // Instant updates via Realtime (requires public.notifications in the
+    // supabase_realtime publication — scripts/realtime_migration.sql). RLS
+    // scopes the stream to the user's own rows; the filter narrows it further.
+    if (window.sb.channel) {
+      window.sb
+        .channel('notif-' + user.id)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications', filter: 'user_id=eq.' + user.id },
+          () => load())
+        .subscribe();
+    }
+    setInterval(load, 60000); // fallback poll if Realtime is unavailable / drops
   })();
 })();
 
