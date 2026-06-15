@@ -146,7 +146,7 @@
       : '';
     document.getElementById('binderTitle').innerHTML =
       `${escapeHtml(displayName)}'s <span class="binder-name-group"><em id="binderNameView">${escapeHtml(binderName)}</em>${editIcon}</span>`;
-    document.title = `${titleText} — Pawpaw Ko`;
+    document.title = `${titleText} | Pawpaw Ko`;
     setupShare(profile);
     setupCollab();   // owner: manage sharing; collaborator: shows who it's shared with
     renderCategory(profile.category || 'optcg');
@@ -234,7 +234,7 @@
         .update({ name: next }).eq('id', currentBinderId);
       if (error) { alert('Could not rename binder: ' + error.message); view.textContent = original; return; }
       original = next;
-      document.title = `${document.getElementById('binderTitle').textContent.split("'s")[0]}'s ${next} — Pawpaw Ko`;
+      document.title = `${document.getElementById('binderTitle').textContent.split("'s")[0]}'s ${next} | Pawpaw Ko`;
     };
     btn.addEventListener('click', () => {
       original = view.textContent;
