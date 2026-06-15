@@ -2503,6 +2503,16 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 .nav-notif-item:last-child { border-bottom: none; }
 .nav-notif-text { font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); }
 .nav-notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.nav-notif-link { cursor: pointer; }
+.nav-notif-link:hover { background: var(--bg-card-hover, rgba(255,255,255,0.04)); }
+
+/* Deck editor: shared-deck collaborator row (mirrors binder .collab-row) */
+.deck-collab { margin: .5rem 0; font-size: .85rem; }
+.deck-collab .collab-row { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+.deck-collab .collab-label { color: var(--text-secondary); }
+.deck-collab .collab-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .15rem .5rem; border: 1px solid var(--border); border-radius: 999px; }
+.deck-collab .collab-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; }
+.deck-collab .collab-none { color: var(--text-muted); }
 
 .nav-profile-wrap { position: relative; display: inline-block; }
 .nav-profile-icon {

@@ -19,6 +19,7 @@
 
   let user = null;
   let deck = null;            // current decks row
+  let isDeckOwner = true;     // viewer owns the open deck (vs. a shared-deck collaborator)
   let openSeq = 0;            // bumped per openDeck() so a stale load can't render over a newer deck
   let leaderCard = null;      // cards row for the leader (base print)
   let leaderArts = [];        // base + _p alt-art prints of the leader
@@ -161,14 +162,19 @@
     add.addEventListener('click', openNewDeck);
     grid.appendChild(add);
 
-    const { data: decks, error } = await window.sb
+    const { data: owned, error } = await window.sb
       .from('decks')
       .select('id, name, leader_card_code, is_public, listing_type, format, created_at, updated_at')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false });
     if (error) { $('decksCount').textContent = error.message; return; }
 
-    if (!decks || decks.length === 0) {
+    // Decks shared WITH me (I co-edit a partner's deck) list after my own.
+    const { data: sharedRaw } = await window.sb.rpc('shared_decks');
+    const shared = (sharedRaw || []).map(d => ({ ...d, _shared: true }));
+    const decks = [...(owned || []), ...shared];
+
+    if (decks.length === 0) {
       $('decksCount').textContent = 'No decks yet — tap + to start building.';
       return;
     }
@@ -207,6 +213,7 @@
                 : '<span class="deck-badge bad">Cooking</span>'}
               ${d.format === 'eternal' ? '<span class="deck-badge etern">eternal</span>' : ''}
               ${d.is_public ? `<span class="deck-badge pub">${esc(d.listing_type || 'public')}</span>` : ''}
+              ${d._shared ? '<span class="deck-badge">Shared</span>' : ''}
             </div>
           </div>
         </a>`;
@@ -316,6 +323,11 @@
     if (seq !== openSeq) return;             // a newer openDeck() superseded this one
     if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
     deck = d;
+    isDeckOwner = (d.user_id === user.id);   // collaborators co-edit but can't publish/delete
+    // Owner-only controls: publishing and deleting stay with the deck owner.
+    $('edEyeBtn').closest('.eye-wrap').style.display = isDeckOwner ? '' : 'none';
+    $('edDeleteBtn').style.display = isDeckOwner ? '' : 'none';
+    setupDeckCollab();
     const url = `decks.html?deck=${d.id}`; // survives hard refresh
     if (push) history.pushState(null, '', url);
     else history.replaceState(null, '', url);
@@ -363,6 +375,59 @@
     await loadOwnedElsewhere();
     if (seq !== openSeq) return;
     await reloadDeckCards();
+  }
+
+  // ---- Shared decks: invite/manage the partner (couples) ----
+  // A deck can only be shared with the partner you co-own a trade binder with
+  // for this game; share_deck targets them automatically (no name to type).
+  function setupDeckCollab() {
+    const el = $('edCollab');
+    if (!el) return;
+    el.style.display = '';
+
+    const refresh = async () => {
+      const { data: collabs } = await window.sb.rpc('deck_collaborators_list', { p_deck_id: deck.id });
+      if (isDeckOwner) {
+        const list = collabs || [];
+        const chips = list.map(c =>
+          `<span class="collab-chip">${esc(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
+        // One partner per deck — only offer "Share" when there isn't one yet.
+        const addBtn = list.length === 0
+          ? `<button class="btn small" id="deckShareBtn" type="button">Share with partner</button>` : '';
+        el.innerHTML = `
+          <div class="collab-row">
+            <span class="collab-label">Share with</span>
+            ${chips}
+            ${addBtn}
+          </div>
+          <p class="auth-error" id="deckCollabError"></p>`;
+        const addEl = $('deckShareBtn');
+        if (addEl) addEl.addEventListener('click', shareDeck);
+        el.querySelectorAll('.collab-remove').forEach(b =>
+          b.addEventListener('click', () => unshareDeck(b.dataset.uid)));
+      } else {
+        el.innerHTML = `<div class="collab-row"><span class="collab-label">Shared deck</span> <span class="collab-none">you're a co-editor</span></div>`;
+      }
+    };
+
+    const shareDeck = async () => {
+      const errEl = $('deckCollabError');
+      if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
+      const { error } = await window.sb.rpc('share_deck', { p_deck_id: deck.id });
+      if (error) { if (errEl) errEl.textContent = error.message; return; }
+      await refresh();
+      const e2 = $('deckCollabError');
+      if (e2) { e2.style.color = '#7ec96a'; e2.textContent = "Invite sent to your partner — they'll get a notification to accept."; }
+    };
+    const unshareDeck = async (uid) => {
+      if (!confirm('Remove your partner from this deck?')) return;
+      const { error } = await window.sb.rpc('unshare_deck', { p_deck_id: deck.id, p_user_id: uid });
+      const errEl = $('deckCollabError');
+      if (error) { if (errEl) errEl.textContent = error.message; return; }
+      refresh();
+    };
+
+    refresh();
   }
 
   // Persist the per-card alt-art overrides for this deck (base -> chosen code).

@@ -187,12 +187,13 @@ renderAuthButton();
     if (!notifs.length) { list.innerHTML = '<div class="nav-notif-empty">No notifications yet.</div>'; return; }
     list.innerHTML = notifs.map(n => {
       const d = n.data || {};
+      // ---- Binder sharing ----
       if (n.type === 'binder_invite' && n.status === 'pending') {
         return `<div class="nav-notif-item">
           <div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their binder <strong>${esc(d.binder_name)}</strong> with you.</div>
           <div class="nav-notif-actions">
-            <button class="btn small notif-accept" data-id="${n.id}">Accept</button>
-            <button class="btn small notif-decline" data-id="${n.id}">Decline</button>
+            <button class="btn small notif-accept" data-id="${n.id}" data-kind="binder">Accept</button>
+            <button class="btn small notif-decline" data-id="${n.id}" data-kind="binder">Decline</button>
           </div></div>`;
       }
       if (n.type === 'binder_invite') {
@@ -204,13 +205,46 @@ renderAuthButton();
       if (n.type === 'binder_invite_declined') {
         return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared binder <strong>${esc(d.binder_name)}</strong>.</div></div>`;
       }
+      // ---- Deck sharing ----
+      if (n.type === 'deck_invite' && n.status === 'pending') {
+        return `<div class="nav-notif-item">
+          <div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their deck <strong>${esc(d.deck_name)}</strong> with you.</div>
+          <div class="nav-notif-actions">
+            <button class="btn small notif-accept" data-id="${n.id}" data-kind="deck">Accept</button>
+            <button class="btn small notif-decline" data-id="${n.id}" data-kind="deck">Decline</button>
+          </div></div>`;
+      }
+      if (n.type === 'deck_invite') {
+        return `<div class="nav-notif-item"><div class="nav-notif-text">You ${esc(n.status)} sharing deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
+      }
+      if (n.type === 'deck_invite_accepted') {
+        return `<div class="nav-notif-item nav-notif-link" data-deck="${esc(d.deck_id)}"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
+      }
+      if (n.type === 'deck_invite_declined') {
+        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared deck <strong>${esc(d.deck_name)}</strong>.</div></div>`;
+      }
+      if (n.type === 'deck_card_collected') {
+        const qty = Number(d.qty) > 1 ? ` ×${esc(d.qty)}` : '';
+        return `<div class="nav-notif-item nav-notif-link" data-deck="${esc(d.deck_id)}"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> got <strong>${esc(d.card_name)}</strong>${qty} — <strong>${esc(d.deck_name)}</strong> and your wishlist updated.</div></div>`;
+      }
       return '';
     }).join('');
-    list.querySelectorAll('.notif-accept').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, true)));
-    list.querySelectorAll('.notif-decline').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, false)));
+    list.querySelectorAll('.notif-accept').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, true, b.dataset.kind)));
+    list.querySelectorAll('.notif-decline').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, false, b.dataset.kind)));
+    // Clicking a deck-related notice opens that deck.
+    list.querySelectorAll('.nav-notif-link').forEach(el => el.addEventListener('click', () => {
+      if (el.dataset.deck) window.location.href = 'decks.html?deck=' + encodeURIComponent(el.dataset.deck);
+    }));
   }
 
-  async function respond(id, accept) {
+  async function respond(id, accept, kind) {
+    if (kind === 'deck') {
+      const { error } = await window.sb.rpc('respond_deck_invite', { p_notification_id: id, p_accept: accept });
+      if (error) { alert(error.message); return; }
+      await load();
+      return;
+    }
+    // binder
     if (accept && !confirm("Accepting MERGES your own trade binder for that game into this shared binder — your cards move into it and you'll co-edit it together. Your separate trade binder is then removed. Continue?")) return;
     const { error } = await window.sb.rpc('respond_binder_invite', { p_notification_id: id, p_accept: accept });
     if (error) { alert(error.message); return; }
