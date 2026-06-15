@@ -32,13 +32,13 @@
   padding: 0;
 }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; font-size: 110%; } /* scale all rem-based UI sizing up ~10% */
 
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 1rem;   /* follows the root size so body text scales with it */
   line-height: 1.7;
   /* Sticky footer: lay the page out as a column at least one viewport tall so
      the footer can be pushed to the bottom on short pages (see .footer
@@ -112,7 +112,7 @@ img { max-width: 100%; height: auto; display: block; }
 
   /* Card tile inner text */
   .card-tile-code  { font-size: 0.72rem; }
-  .card-tile-qty   { font-size: 0.78rem; }
+  .card-tile-qty   { font-size: 1.2rem; }
   .card-tile-notes { font-size: 0.72rem; }
   .listing-pill    { font-size: 0.58rem; padding: 0.16rem 0.5rem; }
 
@@ -206,11 +206,12 @@ img { max-width: 100%; height: auto; display: block; }
 
 .nav-links a {
   font-family: var(--font-serif);
-  font-size: 0.75rem;
+  font-size: 0.95rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-secondary);
   position: relative;
+  padding: 0.35rem 0.4rem;
 }
 
 .nav-links a::after {
@@ -1573,10 +1574,13 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .card-tile-meta .card-tile-code { margin-bottom: 0; }
 .card-tile-qty {
-  font-family: var(--font-serif);
-  color: var(--accent);
-  font-size: 0.95rem;
-  letter-spacing: 0.04em;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #f4d99c;
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 .card-tile-notes {
   font-size: 0.8rem;
@@ -1600,6 +1604,104 @@ body.binder-editing .share-popover { display: none !important; }
 .listing-sell  { border-color: var(--accent); color: var(--accent); }
 .listing-free  { border-color: #6ac99b; color: #6ac99b; }
 .listing-combo { border-color: var(--accent-light); color: var(--accent-light); }
+
+/* Deck-origin pill on wishlist binder cards (owner-only) */
+.deck-pill {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.4rem auto 0;   /* centered under the card */
+  font-family: var(--font-serif);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.22rem 0.6rem;
+  border: 1px solid #4d9de0;
+  border-radius: 999px;
+  background: rgba(77, 157, 224, 0.16);
+  color: #8fc4f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+/* Reserve the deck-pill line on every wishlist card so the GOT IT button below
+   sits at the same height whether or not a deck pill is present. */
+.deck-pill-slot {
+  min-height: 1.55rem;
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.deck-pill-slot .deck-pill { margin: 0; }
+
+.card-tile-need { color: #4d9de0; }
+
+/* "Received" action on wishlist binder cards (owner-only, read mode) —
+   a fun, bouncy gold "GOT IT!" pill. */
+.received-btn {
+  display: block;
+  margin: 0.55rem auto 0;   /* centered under the card */
+  width: fit-content;
+  padding: 0.32rem 0.9rem;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3a2c10;
+  background: linear-gradient(180deg, #d8b751, #bf9636);
+  border: 1px solid #ad862b;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #8f6c1e;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.received-btn:hover {
+  transform: scale(1.08) translateY(-1px);
+  box-shadow: 0 4px 14px rgba(191, 150, 54, 0.45);
+  filter: brightness(1.05);
+}
+.received-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 1px 0 #8f6c1e;
+}
+.binder-content.editing .card-tile .received-btn,
+.binder-content.aesthetics .card-tile .received-btn { display: none; }
+
+/* Star + confetti burst that flies off the "Got it" button. */
+.spark {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  animation: spark-fly 0.7s ease-out forwards;
+  will-change: transform, opacity;
+}
+.spark-star {
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.45);
+}
+.spark-confetti {
+  width: 7px;
+  height: 11px;
+  border-radius: 1px;
+}
+@keyframes spark-fly {
+  0%   { opacity: 1; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(0.55); }
+}
+
+/* "For deck" filter in the wishlist binder cards header */
+.deck-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.deck-filter .form-label { margin: 0; white-space: nowrap; }
+.deck-filter .form-input.small { width: auto; min-width: 9rem; }
 
 /* Binder flair pills */
 .binder-flair-pill,
@@ -1653,7 +1755,24 @@ body.binder-editing .share-popover { display: none !important; }
 }
 
 .flair-trade    { border-color: #6a9bc9; color: #6a9bc9; }
-.flair-wishlist { border-color: #b07cc6; color: #b07cc6; }
+.flair-wishlist { border-color: #4d9de0; color: #4d9de0; }
+.flair-shared   { border-color: #c98ad0; color: #c98ad0; }
+
+/* Shared-binder collaborator controls (binder header) */
+.binder-collab { margin-top: 0.75rem; }
+.collab-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.collab-label { font-family: var(--font-serif); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.collab-none { color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+.collab-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid #c98ad0; color: #e3c2e7; border-radius: 999px;
+  padding: 0.2rem 0.6rem; font-size: 0.85rem;
+}
+.collab-remove {
+  background: none; border: none; color: inherit; cursor: pointer;
+  font-size: 1.1rem; line-height: 1; padding: 0; opacity: 0.7;
+}
+.collab-remove:hover { opacity: 1; }
 .flair-flex     { border-color: var(--accent-light); color: var(--accent-light); }
 .flair-lgs      { border-color: #6ac99b; color: #6ac99b; }
 
@@ -1824,12 +1943,14 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 .binder-content.aesthetics .card-edit-controls,
 .binder-content.aesthetics .card-tile-qty,
 .binder-content.aesthetics .card-tile .listing-pill,
+.binder-content.aesthetics .card-tile .deck-pill,
 .binder-content.aesthetics .card-tile-notes { display: none !important; }
 
 /* Binder editor — view + edit toggle */
 .binder-content .card-edit-controls { display: none; }
 .binder-content.editing .card-tile-qty,
-.binder-content.editing .card-tile .listing-pill { display: none; }
+.binder-content.editing .card-tile .listing-pill,
+.binder-content.editing .card-tile .deck-pill { display: none; }
 .binder-content.editing .card-edit-controls {
   display: flex;
   flex-direction: column;
@@ -1925,17 +2046,15 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 }
 .binder-content.editing .edit-filters .filter-group { margin-bottom: 0; }
 .binder-content.editing .edit-filters #cbClear {
-  align-self: end;
-  justify-self: end;
-  grid-column: -2 / -1;
-  height: fit-content;
+  align-self: end;       /* bottom-align with the filter inputs, in line with them */
   white-space: nowrap;
-}
-@media (max-width: 768px) {
-  .binder-content.editing .edit-filters #cbClear {
-    grid-column: 1 / -1;
-    margin-top: 0.5rem;
-  }
+  /* Match .form-input's box metrics so it's the same height as the filter boxes,
+     but stay narrow (body font, mixed-case) so "Clear filters" fits the cell. */
+  padding: 1rem 0.7rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .binder-content.editing .add-cards-panel,
@@ -2007,6 +2126,41 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .page-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
 .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Top page-flip bar mirrors the bottom one, sitting just above the grid. */
+.binder-pagination-top { margin-top: 0; margin-bottom: 1.25rem; }
+
+/* Side page-flip arrows flanking the binder grid. */
+.binder-grid-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+.binder-grid-wrap .card-grid { flex: 1 1 auto; min-width: 0; }
+.binder-side-nav {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 1.9rem;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.binder-side-nav:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.binder-side-nav:disabled { opacity: 0.25; cursor: not-allowed; }
+
+/* On narrow screens drop the side arrows (they'd squeeze the grid); the
+   top + bottom page bars still handle flipping. */
+@media (max-width: 768px) {
+  .binder-side-nav { display: none !important; }
+}
 
 /* Mobile: stack panels vertically; binder stays 5 wide but tiles shrink */
 @media (max-width: 1100px) {
@@ -2307,6 +2461,49 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 }
 
 /* Profile icon + dropdown (signed in) */
+/* Notifications bell (injected into the nav for signed-in users) */
+.nav-notif-wrap { position: relative; display: inline-flex; align-items: center; margin-right: 0.6rem; }
+.nav-notif-icon {
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.nav-notif-icon:hover { border-color: var(--accent); color: var(--accent); }
+.nav-notif-badge {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  background: #d9534f; color: #fff;
+  border-radius: 999px; font-size: 0.62rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+}
+/* The CSS display above overrides the `hidden` attribute's default, so restore
+   it: no badge unless there's at least one unread notification. */
+.nav-notif-badge[hidden] { display: none; }
+.nav-notif-dropdown {
+  position: absolute; top: calc(100% + 0.65rem); right: 0;
+  width: 330px; max-width: 88vw;
+  background: var(--bg-card); border: 1px solid var(--border-accent);
+  border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  display: none; z-index: 1100; overflow: hidden;
+}
+.nav-notif-dropdown.open { display: block; }
+.nav-notif-header {
+  font-family: var(--font-serif); font-size: 0.78rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-secondary);
+  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+}
+.nav-notif-list { max-height: 60vh; overflow-y: auto; }
+.nav-notif-empty { padding: 1rem; color: var(--text-muted); font-size: 0.85rem; }
+.nav-notif-item { padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
+.nav-notif-item:last-child { border-bottom: none; }
+.nav-notif-text { font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); }
+.nav-notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+
 .nav-profile-wrap { position: relative; display: inline-block; }
 .nav-profile-icon {
   width: 40px;
@@ -2411,14 +2608,14 @@ html.is-signed-in .nav-auth .nav-profile-wrap { display: inline-block; }
 .nav-dd-wrap { position: relative; }
 .nav-dd-btn {
   font-family: var(--font-serif);
-  font-size: 0.75rem;
+  font-size: 0.95rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-secondary);
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0;
+  padding: 0.35rem 0.4rem;
   position: relative;
   transition: var(--transition);
 }

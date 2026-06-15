@@ -94,6 +94,7 @@
       <p id="binderMeta" class="text-muted-line"></p>
       <p id="binderUpdated" class="text-muted-line" style="font-size: 0.85em; opacity: 0.7;"></p>
       <p id="binderContact" style="margin-top: 0.5rem;"></p>
+      <div id="binderCollab" class="binder-collab" style="display:none;"></div>
 
       <div class="binder-actions" id="binderActions" style="margin-top: 1.5rem; display:none;">
         <button class="btn btn-filled" id="editBtn">Edit Binder</button>
@@ -184,7 +185,7 @@
                 <label class="form-label">Quantity
                   <input type="number" id="alQty" class="form-input small" min="1" value="1">
                 </label>
-                <label class="form-label">Listing type
+                <label class="form-label" id="alTypeRow">Listing type
                   <select id="alType" class="form-input small">
                     <option value="trade">Trade Only</option>
                     <option value="sell">Sell Only</option>
@@ -213,6 +214,7 @@
                 <option value="custom-4x3">Custom (4x3)</option>
                 <option value="custom-3x3">Custom (3x3)</option>
                 <option value="release">Release order</option>
+                <option value="rarity">Rarity</option>
                 <option value="color"     data-game-opt="optcg">Color</option>
                 <option value="cost"      data-game-opt="optcg">Cost</option>
                 <option value="ptype"     data-game-opt="pokemon">Type</option>
@@ -221,13 +223,22 @@
               </select>
             </h3>
             <label class="checkbox-item filter-pill" id="excludeBinderToggle">
-              <input type="checkbox" id="cbExcludeBinder">
+              <input type="checkbox" id="cbExcludeBinder" checked>
               <span>Show all (ignore filters)</span>
             </label>
+            <div class="deck-filter" id="deckFilterGroup" style="display:none;">
+              <label class="form-label" for="cbDeck">For deck</label>
+              <select class="form-input small" id="cbDeck"><option value="">All cards</option></select>
+            </div>
           </div>
           <div class="divider"></div>
           <p class="text-muted-line" id="binderStatus">Loading…</p>
-          <div class="card-grid" id="cardGrid"></div>
+          <div class="binder-pagination binder-pagination-top" id="binderPaginationTop"></div>
+          <div class="binder-grid-wrap">
+            <button type="button" class="binder-side-nav binder-side-prev" id="binderSidePrev" aria-label="Previous page" style="display:none;">‹</button>
+            <div class="card-grid" id="cardGrid"></div>
+            <button type="button" class="binder-side-nav binder-side-next" id="binderSideNext" aria-label="Next page" style="display:none;">›</button>
+          </div>
           <div class="binder-pagination" id="binderPagination"></div>
         </div>
       </div>

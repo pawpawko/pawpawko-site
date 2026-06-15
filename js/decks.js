@@ -19,6 +19,7 @@
 
   let user = null;
   let deck = null;            // current decks row
+  let openSeq = 0;            // bumped per openDeck() so a stale load can't render over a newer deck
   let leaderCard = null;      // cards row for the leader (base print)
   let leaderArts = [];        // base + _p alt-art prints of the leader
   let artIdx = 0;             // current art (persisted per deck in localStorage)
@@ -27,12 +28,18 @@
   const cardArtKey = (deckId) => `pawpaw:deckCardArt:${deckId}`;
   let deckCards = [];         // deck_cards rows
   let cardInfo = {};          // card_code -> cards row
+  let ownedElsewhere = {};    // base card_code -> { qty, binders:[name] } across your non-wishlist binders
   let exceptions = {};        // card_code -> max_copies (null = unlimited, 0 = banned)
   let rotatedPrefixes = new Set();  // set prefixes out of Standard (e.g. OP01)
   let rotationExempt = new Set();   // base codes legal despite a rotated prefix
 
   const isBase = (code) => !/_p\d+$/i.test(code);
   const baseCode = (code) => String(code).split('_')[0];
+  // One Piece color letters (U = Blue, since B is taken by Black). Used for the
+  // default deck name: "Green/Blue Uta" -> "GU Uta Deck".
+  const COLOR_ABBREV = { Red: 'R', Green: 'G', Blue: 'U', Purple: 'P', Black: 'B', Yellow: 'Y' };
+  const colorAbbrev = (color) => String(color || '').split('/')
+    .map(c => COLOR_ABBREV[c.trim()] || (c.trim()[0] || '').toUpperCase()).join('');
   const standardLegal = (code) =>
     !rotatedPrefixes.has(baseCode(code).split('-')[0]) || rotationExempt.has(baseCode(code));
   const pillValue = (groupId) =>
@@ -156,9 +163,9 @@
 
     const { data: decks, error } = await window.sb
       .from('decks')
-      .select('id, name, leader_card_code, is_public, listing_type, format, created_at')
+      .select('id, name, leader_card_code, is_public, listing_type, format, created_at, updated_at')
       .eq('user_id', user.id)
-      .order('created_at');
+      .order('updated_at', { ascending: false });
     if (error) { $('decksCount').textContent = error.message; return; }
 
     if (!decks || decks.length === 0) {
@@ -178,9 +185,15 @@
     const validity = await Promise.all(decks.map(d =>
       window.sb.rpc('deck_validity', { p_deck_id: d.id }).then(r => r.data).catch(() => null)));
 
-    decks.forEach((d, i) => {
+    // Show "Cooking" decks (not yet valid + fully owned) before finished "valid"
+    // decks; within each group keep the most-recently-edited order from the query
+    // (Array.sort is stable).
+    const done = (v) => !!(v && v.valid && v.owned_complete);
+    const items = decks.map((d, i) => ({ d, v: validity[i] || {} }))
+      .sort((a, b) => Number(done(a.v)) - Number(done(b.v)));
+
+    items.forEach(({ d, v }) => {
       const L = leaderMap[artOf(d)] || leaderMap[d.leader_card_code] || {};
-      const v = validity[i] || {};
       const li = document.createElement('li');
       li.className = 'deck-tile';
       li.innerHTML = `
@@ -189,7 +202,9 @@
           <div class="deck-tile-body">
             <div class="deck-tile-name">${esc(d.name)}</div>
             <div class="deck-tile-meta">
-              ${v.valid ? '<span class="deck-badge ok">valid</span>' : '<span class="deck-badge bad">cooking</span>'}
+              ${(v.valid && v.owned_complete)
+                ? '<span class="deck-badge ok">valid</span>'
+                : '<span class="deck-badge bad">Cooking</span>'}
               ${d.format === 'eternal' ? '<span class="deck-badge etern">eternal</span>' : ''}
               ${d.is_public ? `<span class="deck-badge pub">${esc(d.listing_type || 'public')}</span>` : ''}
             </div>
@@ -253,7 +268,7 @@
     const { data, error } = await window.sb
       .from('decks')
       .insert({ user_id: user.id, game: GAME, leader_card_code: leader.card_code,
-                name: `${leader.color ? leader.color + ' ' : ''}${leader.name} Deck`,
+                name: `${leader.color ? colorAbbrev(leader.color) + ' ' : ''}${leader.name} Deck`,
                 format: pillValue('ndFormat') || 'standard' })
       .select('id').single();
     if (error) {
@@ -292,7 +307,13 @@
   // push=true when the user navigates list -> editor (so browser Back
   // returns to the list); deep links and popstate restores replace instead.
   async function openDeck(deckId, push = false) {
+    const seq = ++openSeq;
+    // Clear the previous deck's cards up front so a slow load never flashes the
+    // old deck while the new one is still fetching.
+    deckCards = [];
+    $('edDeckGrid').innerHTML = '';
     const { data: d, error } = await window.sb.from('decks').select('*').eq('id', deckId).single();
+    if (seq !== openSeq) return;             // a newer openDeck() superseded this one
     if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
     deck = d;
     const url = `decks.html?deck=${d.id}`; // survives hard refresh
@@ -301,6 +322,7 @@
     const { data: L } = await window.sb
       .from('cards').select('card_code,name,color,image_url,image_url_lg')
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
+    if (seq !== openSeq) return;             // superseded while fetching the leader
     leaderCard = L;
 
     // Alt arts: the base print plus its _p variants (same card number).
@@ -337,6 +359,9 @@
       }
     } catch (e) {}
 
+    if (seq !== openSeq) return;
+    await loadOwnedElsewhere();
+    if (seq !== openSeq) return;
     await reloadDeckCards();
   }
 
@@ -360,9 +385,38 @@
     applyLeaderArt();
   }
 
-  async function reloadDeckCards() {
+  // Cross-check against your collection: how many copies of each card you
+  // physically hold in your OTHER (non-wishlist) binders for this game. The
+  // wishlist binder is excluded — it's cards you WANT, not own. Built once per
+  // deck open and keyed by base code so alt-art prints (OP12-041_p1) count
+  // toward the same number the deck tracks.
+  async function loadOwnedElsewhere() {
+    ownedElsewhere = {};
+    if (!deck || !user) return;
+    const { data: binders } = await window.sb
+      .from('binders').select('id,name,flair')
+      .eq('user_id', user.id).eq('category', GAME);
+    const owned = (binders || []).filter(b => b.flair !== 'wishlist');
+    if (!owned.length) return;
+    const nameById = {};
+    owned.forEach(b => { nameById[b.id] = b.name || 'Binder'; });
     const { data: rows } = await window.sb
-      .from('deck_cards').select('card_code,quantity,owned').eq('deck_id', deck.id);
+      .from('listings').select('binder_id,card_code,quantity')
+      .in('binder_id', owned.map(b => b.id));
+    (rows || []).forEach(r => {
+      const base = baseCode(r.card_code);
+      const e = ownedElsewhere[base] || (ownedElsewhere[base] = { qty: 0, binders: [] });
+      e.qty += r.quantity || 0;
+      const nm = nameById[r.binder_id];
+      if (nm && !e.binders.includes(nm)) e.binders.push(nm);
+    });
+  }
+
+  async function reloadDeckCards() {
+    const myId = deck && deck.id;          // the deck we're loading for
+    const { data: rows } = await window.sb
+      .from('deck_cards').select('card_code,quantity,owned').eq('deck_id', myId);
+    if (!deck || deck.id !== myId) return; // deck switched mid-load — drop stale data
     deckCards = rows || [];
     const missing = deckCards.map(r => r.card_code).filter(c => !cardInfo[c]);
     if (missing.length) {
@@ -371,6 +425,7 @@
         .eq('game', GAME).in('card_code', missing);
       (cards || []).forEach(c => { cardInfo[c.card_code] = c; });
     }
+    if (!deck || deck.id !== myId) return; // re-check after the second await
     renderDeck();
     refreshValidity();
     cardZoom.refresh();
@@ -533,6 +588,17 @@
       // Badge shows total qty normally; while highlighting missing the
       // owned-short tiles swap to their missing count (highlighted).
       const art = cardArt[r.card_code]; // chosen alt-art print (set in magnified view)
+      // Collection cross-check: this card is owned-short in the deck but you
+      // physically hold copies in a non-wishlist binder. Badge → click to mark
+      // owned (bumps deck `owned` up to cover your binder count, never down).
+      // Show the badge only when your collection has MORE copies than you've
+      // already marked owned — otherwise clicking would be a no-op (it never
+      // marks owned beyond what you physically hold).
+      const oe = ownedElsewhere[r.card_code];
+      const oeAvail = (r.owned < r.quantity && oe && oe.qty > r.owned) ? oe : null;
+      const oeBadge = oeAvail
+        ? `<span class="own-elsewhere" role="button" tabindex="0" title="You have ×${oeAvail.qty} in ${esc(oeAvail.binders.join(', '))} — click to mark owned">📦 ×${oeAvail.qty}</span>`
+        : '';
       tile.innerHTML = `
         <img src="${esc((art && art.image_url) || c.image_url || '')}" alt="${esc(c.name || r.card_code)}">
         <div class="card-acts">
@@ -540,6 +606,7 @@
           ${zoomBtnHTML()}
           <button class="card-act qty-inc${incBlocked ? ' at-cap' : ''}" aria-label="${incLabel}"${incBlocked ? ` aria-disabled="true" title="${incTitle}"` : ''}>+</button>
         </div>
+        ${oeBadge}
         <span class="qty-badge">
           <span class="qty-total">${r.quantity > 4 ? 'X' : 'x' + r.quantity}</span>
           <span class="qty-missing">x${r.quantity - r.owned}</span>
@@ -547,9 +614,43 @@
       // Tap a card to open the magnified view, where qty/owned are edited.
       tile.addEventListener('click', () => cardZoom.show(c));
       wireZoom(tile, c);
-      // Inline ±1 (stopPropagation so the tile's zoom click doesn't fire).
-      tile.querySelector('.qty-dec').addEventListener('click', e => { e.stopPropagation(); if (decBlocked) return; stepCard(r.card_code, kind, -1); });
-      tile.querySelector('.qty-inc').addEventListener('click', e => { e.stopPropagation(); if (incBlocked) return; stepCard(r.card_code, kind, 1); });
+      // Inline ±1 on click; press-and-hold (~450ms) jumps to min/max — so in
+      // owned-edit mode (after clicking "N missing") holding + sets owned to the
+      // full deck quantity, and in qty mode it jumps to the copy cap.
+      // stopPropagation keeps the tile's zoom click from firing.
+      const wireTileBtn = (btn, delta, blocked) => {
+        if (!btn) return;
+        let timer = null;
+        const cancelHold = () => { clearTimeout(timer); timer = null; };
+        btn.addEventListener('pointerdown', () => {
+          if (blocked) return;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            holdJustFired = Date.now();
+            setCardValue(r.card_code, kind, delta < 0 ? 'min' : 'max');
+          }, 450);
+        });
+        btn.addEventListener('pointerup', cancelHold);
+        btn.addEventListener('pointerleave', cancelHold);
+        btn.addEventListener('contextmenu', e => e.preventDefault()); // mobile long-press menu
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          if (Date.now() - holdJustFired < 600) { e.preventDefault(); return; } // released after a hold
+          if (blocked) return;
+          stepCard(r.card_code, kind, delta);
+        });
+      };
+      wireTileBtn(tile.querySelector('.qty-dec'), -1, decBlocked);
+      wireTileBtn(tile.querySelector('.qty-inc'),  1, incBlocked);
+      if (oeAvail) {
+        const reconcile = e => {
+          e.stopPropagation(); e.preventDefault();
+          setCardAbsolute(r.card_code, 'owned', Math.min(r.quantity, Math.max(r.owned, oeAvail.qty)));
+        };
+        const oeEl = tile.querySelector('.own-elsewhere');
+        oeEl.addEventListener('click', reconcile);
+        oeEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') reconcile(e); });
+      }
       grid.appendChild(tile);
     });
 
@@ -591,33 +692,80 @@
     return exceptions[code]; // null = unlimited
   }
 
-  async function stepCard(code, kind, delta) {
+  // ---- Serialized deck-card writes ----
+  // Every deck_cards mutation updates the local cache optimistically (instant
+  // feedback) and queues its DB write so fast repeated clicks can't race on a
+  // stale read — which previously lost increments or dropped duplicate inserts.
+  // Each queued writer re-reads the live row, so deltas accumulate correctly.
+  // One reconcile fetch runs once the burst settles (also rolling back anything
+  // the gatekeeper trigger rejected).
+  let dcQueue = Promise.resolve();
+  let dcPending = 0;
+  function queueDeckWrite(writer) {
+    dcPending++;
+    const settle = () => { if (--dcPending === 0) reloadDeckCards().then(renderBrowser); };
+    dcQueue = dcQueue.then(writer).then(settle, (e) => {
+      const msg = (e && e.message) || 'Update failed.';
+      $('cbError').textContent = msg;
+      $('edError').textContent = msg;
+      settle();
+    });
+  }
+  function renderDeckLocal() { renderDeck(); renderBrowser(); cardZoom.refresh(); }
+  function localSetRow(code, fields) {
+    const row = deckCards.find(r => r.card_code === code);
+    if (row) Object.assign(row, fields);
+    renderDeckLocal();
+  }
+  function localRemoveRow(code) {
+    const i = deckCards.findIndex(r => r.card_code === code);
+    if (i >= 0) deckCards.splice(i, 1);
+    renderDeckLocal();
+  }
+  async function readDeckCard(code) {
+    const { data } = await window.sb.from('deck_cards').select('quantity, owned')
+      .eq('deck_id', deck.id).eq('card_code', code).maybeSingle();
+    return data;
+  }
+
+  function stepCard(code, kind, delta) {
     const row = deckCards.find(r => r.card_code === code);
     if (!row) return;
     $('edError').textContent = '';
     if (kind === 'qty') {
-      const q = row.quantity + delta;
-      if (q <= 0) {
-        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
-        if (error) { $('edError').textContent = error.message; return; }
-      } else {
-        const { error } = await window.sb.from('deck_cards')
-          .update({ quantity: q, owned: Math.min(row.owned, q) })
-          .eq('deck_id', deck.id).eq('card_code', code);
-        if (error) { $('edError').textContent = error.message; return; }
-      }
+      const nq = row.quantity + delta;
+      if (nq <= 0) localRemoveRow(code);
+      else localSetRow(code, { quantity: nq, owned: Math.min(row.owned, nq) });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        const q = cur.quantity + delta;
+        if (q <= 0) {
+          const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
+          if (error) throw error;
+        } else {
+          const { error } = await window.sb.from('deck_cards')
+            .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', deck.id).eq('card_code', code);
+          if (error) throw error;
+        }
+      });
     } else {
-      const o = Math.max(0, Math.min(row.quantity, row.owned + delta));
-      const { error } = await window.sb.from('deck_cards')
-        .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
-      if (error) { $('edError').textContent = error.message; return; }
+      const no = Math.max(0, Math.min(row.quantity, row.owned + delta));
+      localSetRow(code, { owned: no });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        const o = Math.max(0, Math.min(cur.quantity, cur.owned + delta));
+        const { error } = await window.sb.from('deck_cards')
+          .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+        if (error) throw error;
+      });
     }
-    await reloadDeckCards();
   }
 
   // Hold-to-jump: qty min=1 / max=copy cap (50 if unlimited); owned min=0 /
   // max=quantity. (Holding qty "-" stops at 1, never deletes the card.)
-  async function setCardValue(code, kind, target) {
+  function setCardValue(code, kind, target) {
     const row = deckCards.find(r => r.card_code === code);
     if (!row) return;
     $('edError').textContent = '';
@@ -625,23 +773,32 @@
       const cap = capFor(code);
       const q = target === 'min' ? 1 : (cap ?? 50);
       if (q === row.quantity) return;
-      const { error } = await window.sb.from('deck_cards')
-        .update({ quantity: q, owned: Math.min(row.owned, q) })
-        .eq('deck_id', deck.id).eq('card_code', code);
-      if (error) { $('edError').textContent = error.message; return; }
+      localSetRow(code, { quantity: q, owned: Math.min(row.owned, q) });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        const { error } = await window.sb.from('deck_cards')
+          .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', deck.id).eq('card_code', code);
+        if (error) throw error;
+      });
     } else {
       const o = target === 'min' ? 0 : row.quantity;
       if (o === row.owned) return;
-      const { error } = await window.sb.from('deck_cards')
-        .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
-      if (error) { $('edError').textContent = error.message; return; }
+      localSetRow(code, { owned: o });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        const oo = target === 'min' ? 0 : cur.quantity;
+        const { error } = await window.sb.from('deck_cards')
+          .update({ owned: oo }).eq('deck_id', deck.id).eq('card_code', code);
+        if (error) throw error;
+      });
     }
-    await reloadDeckCards();
   }
 
   // Set an exact value from typed input (magnified-view qty/owned fields).
   // qty: clamped to [0, cap] (0 removes the card); owned: clamped to [0, qty].
-  async function setCardAbsolute(code, kind, value) {
+  function setCardAbsolute(code, kind, value) {
     const row = deckCards.find(r => r.card_code === code);
     if (!row) return;
     let n = parseInt(value, 10);
@@ -651,23 +808,34 @@
       const cap = capFor(code);
       n = Math.max(0, cap !== null ? Math.min(n, cap) : n);
       if (n === row.quantity) return;
-      if (n <= 0) {
-        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
-        if (error) { $('edError').textContent = error.message; return; }
-      } else {
-        const { error } = await window.sb.from('deck_cards')
-          .update({ quantity: n, owned: Math.min(row.owned, n) })
-          .eq('deck_id', deck.id).eq('card_code', code);
-        if (error) { $('edError').textContent = error.message; return; }
-      }
+      const target = n;
+      if (target <= 0) localRemoveRow(code);
+      else localSetRow(code, { quantity: target, owned: Math.min(row.owned, target) });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        if (target <= 0) {
+          const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
+          if (error) throw error;
+        } else {
+          const { error } = await window.sb.from('deck_cards')
+            .update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', deck.id).eq('card_code', code);
+          if (error) throw error;
+        }
+      });
     } else {
-      n = Math.max(0, Math.min(row.quantity, n));
-      if (n === row.owned) return;
-      const { error } = await window.sb.from('deck_cards')
-        .update({ owned: n }).eq('deck_id', deck.id).eq('card_code', code);
-      if (error) { $('edError').textContent = error.message; return; }
+      const target = Math.max(0, Math.min(row.quantity, n));
+      if (target === row.owned) return;
+      localSetRow(code, { owned: target });
+      queueDeckWrite(async () => {
+        const cur = await readDeckCard(code);
+        if (!cur) return;
+        const o = Math.max(0, Math.min(cur.quantity, target));
+        const { error } = await window.sb.from('deck_cards')
+          .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+        if (error) throw error;
+      });
     }
-    await reloadDeckCards();
   }
 
   // ---------------- Add Cards overlay browser ----------------
@@ -849,21 +1017,37 @@
     $('cbMore').style.display = hasMore ? '' : 'none';
   }
 
-  async function addCard(card) {
+  // Click-to-add: optimistic + serialized via the shared deck-write queue, so
+  // fast clicks can't race into a duplicate INSERT (PK violation) that silently
+  // drops. The count bumps locally for instant feedback; writes run in order.
+  function addCard(card) {
     $('edError').textContent = '';
     $('cbError').textContent = '';
     cardInfo[card.card_code] = card;
     const owned = $('cbOwned').checked; // count the added copy as owned
     const existing = deckCards.find(r => r.card_code === card.card_code);
-    const error = existing
-      ? (await window.sb.from('deck_cards')
-          .update({ quantity: existing.quantity + 1, owned: owned ? existing.owned + 1 : existing.owned })
-          .eq('deck_id', deck.id).eq('card_code', card.card_code)).error
-      : (await window.sb.from('deck_cards')
-          .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 })).error;
-    if (error) { $('cbError').textContent = error.message; return; } // trigger messages: copies/bans/pairs
-    await reloadDeckCards();
-    renderBrowser(); // refresh the xN markers without resetting Load More
+    const cap = capFor(card.card_code); // null = unlimited
+    if (existing && cap !== null && existing.quantity >= cap) {
+      $('cbError').textContent = `Max ${cap} cop${cap === 1 ? 'y' : 'ies'} of ${card.card_code}.`;
+      return;
+    }
+    // Optimistic local update — instant ×N bump, no reload between clicks.
+    if (existing) localSetRow(card.card_code, { quantity: existing.quantity + 1, owned: owned ? existing.owned + 1 : existing.owned });
+    else { deckCards.push({ card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 }); renderDeckLocal(); }
+
+    queueDeckWrite(async () => {
+      const cur = await readDeckCard(card.card_code);
+      if (cur) {
+        const { error } = await window.sb.from('deck_cards')
+          .update({ quantity: cur.quantity + 1, owned: owned ? (cur.owned || 0) + 1 : cur.owned })
+          .eq('deck_id', deck.id).eq('card_code', card.card_code);
+        if (error) throw error;
+      } else {
+        const { error } = await window.sb.from('deck_cards')
+          .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 });
+        if (error) throw error;
+      }
+    });
   }
 
   async function refreshValidity() {
@@ -899,7 +1083,7 @@
     const badges = [];
     // "deck valid" reads warm orangish-green until fully owned, then full green.
     if (v.valid) badges.push(`<span class="deck-badge ${v.owned_complete ? 'ok' : 'partial'}">deck valid</span>`);
-    if (v.owned_complete) badges.push('<span class="deck-badge ok">fully owned</span>');
+    if (v.owned_complete) badges.push('<span class="deck-badge ok">owned</span>');
     $('edBadges').innerHTML = badges.join(' ');
 
     syncPublishUi(v);
@@ -1102,10 +1286,78 @@
 
 
   async function deleteDeck() {
-    if (!confirm(`Delete "${deck.name}"? This cannot be undone.`)) return;
+    // Deck "owned" copies aren't tracked as binder listings, so they'd be lost
+    // on delete. A single custom modal offers to move them to the trade binder
+    // first (native confirm() chains get suppressed after the first dialog).
+    const ownedRows = deckCards.filter(r => r.owned > 0);
+    const ownedCopies = ownedRows.reduce((s, r) => s + r.owned, 0);
+
+    const act = await confirmDeleteDeck(deck.name, ownedCopies);
+    if (act === 'cancel') return;
+    if (act === 'move') {
+      const ok = await returnOwnedToCollection(ownedRows);
+      if (!ok) return; // error surfaced; keep the deck so the cards aren't lost
+    }
+
     const { error } = await window.sb.from('decks').delete().eq('id', deck.id);
     if (error) { $('edError').textContent = error.message; return; }
     showList();
+  }
+
+  // Custom delete-confirmation modal. Resolves to 'cancel' | 'delete' | 'move'.
+  // The "move to trade" choice only appears when the deck has owned copies.
+  function confirmDeleteDeck(name, ownedCopies) {
+    return new Promise(resolve => {
+      const owned = ownedCopies > 0;
+      const back = document.createElement('div');
+      back.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(8,6,14,.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--bg-card,#181622);border:1px solid var(--border,#3a3344);border-radius:12px;max-width:430px;width:100%;padding:1.4rem 1.5rem;';
+      card.innerHTML = `
+        <h3 style="margin:0 0 .55rem;font-family:var(--font-serif);font-size:1.15rem;">Delete “${esc(name)}”?</h3>
+        <p style="margin:0 0 1.1rem;color:var(--text-secondary,#c4b9ad);font-size:.9rem;line-height:1.4;">This can’t be undone.${owned ? ` You’ve marked <strong>${ownedCopies}</strong> card${ownedCopies === 1 ? '' : 's'} as owned in this deck.` : ''}</p>
+        <div style="display:flex;flex-direction:column;gap:.55rem;">
+          ${owned ? `<button class="btn btn-filled" data-act="move">Move ${ownedCopies} owned to trade binder &amp; delete</button>` : ''}
+          <button class="btn" data-act="delete" style="border-color:#d98a8a;color:#d98a8a;">Delete${owned ? ' without saving cards' : ' deck'}</button>
+          <button class="btn" data-act="cancel">Cancel</button>
+        </div>`;
+      back.appendChild(card);
+      document.body.appendChild(back);
+      const done = (val) => { back.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+      const onKey = (e) => { if (e.key === 'Escape') done('cancel'); };
+      document.addEventListener('keydown', onKey);
+      back.addEventListener('click', e => { if (e.target === back) done('cancel'); });
+      card.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', () => done(b.dataset.act)));
+    });
+  }
+
+  // Add each deck card's owned copies into the user's trade binder for this game
+  // (created if none exists), merging quantities into any existing listing for
+  // the same card. Returns false on error.
+  async function returnOwnedToCollection(ownedRows) {
+    const { data: binders } = await window.sb.from('binders')
+      .select('id,name,flair').eq('user_id', user.id).eq('category', GAME).eq('flair', 'trade');
+    let target = (binders || [])[0];
+    if (!target) {
+      const { data: nb, error: ce } = await window.sb.from('binders')
+        .insert({ user_id: user.id, name: 'Collection', category: GAME, flair: 'trade' })
+        .select('id,name').single();
+      if (ce) { $('edError').textContent = 'Could not create a trade binder: ' + ce.message; return false; }
+      target = nb;
+    }
+    const codes = ownedRows.map(r => r.card_code);
+    const { data: existing } = await window.sb.from('listings')
+      .select('id,card_code,quantity').eq('binder_id', target.id).in('card_code', codes);
+    const byCode = {};
+    (existing || []).forEach(l => { byCode[l.card_code] = l; });
+    for (const r of ownedRows) {
+      const ex = byCode[r.card_code];
+      const res = ex
+        ? await window.sb.from('listings').update({ quantity: ex.quantity + r.owned }).eq('id', ex.id)
+        : await window.sb.from('listings').insert({ binder_id: target.id, card_code: r.card_code, quantity: r.owned, listing_type: 'trade' });
+      if (res.error) { $('edError').textContent = res.error.message; return false; }
+    }
+    return true;
   }
 
   init();

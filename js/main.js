@@ -131,6 +131,111 @@ function wireProfileDropdown() {
 wireProfileDropdown();
 renderAuthButton();
 
+// ---- Notifications (bell + dropdown) ----
+// Injected into the nav for signed-in users so it lives on every page without
+// editing each one. Shows binder-share invites with Accept/Decline, plus info
+// notices when a partner accepts/declines.
+(function initNotifications() {
+  if (!window.PK || !window.SB_READY) return;
+  const navAuth = document.getElementById('navAuth');
+  const profileWrap = navAuth ? navAuth.querySelector('.nav-profile-wrap') : null;
+  if (!navAuth || !profileWrap) return;
+
+  let badge, dd, list, notifs = [];
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function buildUI() {
+    const wrap = document.createElement('div');
+    wrap.className = 'nav-notif-wrap';
+    wrap.innerHTML = `
+      <button class="nav-notif-icon" id="navNotifBtn" aria-label="Notifications" aria-haspopup="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22a2.4 2.4 0 0 0 2.4-2h-4.8A2.4 2.4 0 0 0 12 22Zm6.3-6V11a6.3 6.3 0 0 0-5-6.17V4a1.3 1.3 0 0 0-2.6 0v.83A6.3 6.3 0 0 0 5.7 11v5l-1.5 1.5a1 1 0 0 0 .7 1.7h14.2a1 1 0 0 0 .7-1.7L18.3 16Z"/></svg>
+        <span class="nav-notif-badge" id="navNotifBadge" hidden>0</span>
+      </button>
+      <div class="nav-notif-dropdown" id="navNotifDropdown" role="menu">
+        <div class="nav-notif-header">Notifications</div>
+        <div class="nav-notif-list" id="navNotifList"><div class="nav-notif-empty">Loading…</div></div>
+      </div>`;
+    navAuth.insertBefore(wrap, profileWrap);
+    const btn = wrap.querySelector('#navNotifBtn');
+    badge = wrap.querySelector('#navNotifBadge');
+    dd = wrap.querySelector('#navNotifDropdown');
+    list = wrap.querySelector('#navNotifList');
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const open = dd.classList.toggle('open');
+      if (open && notifs.some(n => !n.read)) {
+        await window.sb.rpc('mark_notifications_read');
+        notifs.forEach(n => { n.read = true; });
+        renderBadge();
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!dd.contains(e.target) && !btn.contains(e.target)) dd.classList.remove('open');
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dd.classList.remove('open'); });
+  }
+
+  function renderBadge() {
+    const unread = notifs.filter(n => !n.read).length;
+    if (unread > 0) { badge.textContent = unread > 9 ? '9+' : String(unread); badge.hidden = false; }
+    else badge.hidden = true;
+  }
+
+  function renderList() {
+    if (!notifs.length) { list.innerHTML = '<div class="nav-notif-empty">No notifications yet.</div>'; return; }
+    list.innerHTML = notifs.map(n => {
+      const d = n.data || {};
+      if (n.type === 'binder_invite' && n.status === 'pending') {
+        return `<div class="nav-notif-item">
+          <div class="nav-notif-text"><strong>${esc(d.from_name)}</strong> wants to share their binder <strong>${esc(d.binder_name)}</strong> with you.</div>
+          <div class="nav-notif-actions">
+            <button class="btn small notif-accept" data-id="${n.id}">Accept</button>
+            <button class="btn small notif-decline" data-id="${n.id}">Decline</button>
+          </div></div>`;
+      }
+      if (n.type === 'binder_invite') {
+        return `<div class="nav-notif-item"><div class="nav-notif-text">You ${esc(n.status)} sharing <strong>${esc(d.binder_name)}</strong>.</div></div>`;
+      }
+      if (n.type === 'binder_invite_accepted') {
+        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> accepted your shared binder <strong>${esc(d.binder_name)}</strong>.</div></div>`;
+      }
+      if (n.type === 'binder_invite_declined') {
+        return `<div class="nav-notif-item"><div class="nav-notif-text"><strong>${esc(d.by_name)}</strong> declined your shared binder <strong>${esc(d.binder_name)}</strong>.</div></div>`;
+      }
+      return '';
+    }).join('');
+    list.querySelectorAll('.notif-accept').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, true)));
+    list.querySelectorAll('.notif-decline').forEach(b => b.addEventListener('click', () => respond(b.dataset.id, false)));
+  }
+
+  async function respond(id, accept) {
+    if (accept && !confirm('Accepting REPLACES your existing trade binder for that game with this shared binder — your current trade binder and its cards will be removed. Continue?')) return;
+    const { error } = await window.sb.rpc('respond_binder_invite', { p_notification_id: id, p_accept: accept });
+    if (error) { alert(error.message); return; }
+    await load();
+  }
+
+  async function load() {
+    const { data, error } = await window.sb.from('notifications')
+      .select('*').order('created_at', { ascending: false }).limit(30);
+    if (error) { notifs = []; renderBadge(); list.innerHTML = '<div class="nav-notif-empty">No notifications yet.</div>'; return; }
+    notifs = data || [];
+    renderBadge();
+    renderList();
+  }
+
+  (async function start() {
+    let user = null;
+    try { user = await window.PK.currentUser(); } catch (e) {}
+    if (!user) return;        // signed-in users only
+    buildUI();
+    await load();
+    setInterval(load, 60000); // light poll so the badge updates without a reload
+  })();
+})();
+
 // ---- Profile-setup gate ----
 // Signed-in users who haven't confirmed a display name (display_name_set
 // is false) are pinned to account.html. The handle_new_user trigger

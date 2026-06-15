@@ -29,8 +29,11 @@
   let ownerUserId = null;
   let viewerUserId = null;
   let isOwner = false;
+  let isCollab = false;           // viewer is a shared-binder collaborator (co-editor)
+  let canEdit = false;            // isOwner || isCollab — may edit the binder + its cards
   let currentBinderId = null;     // the binder we're viewing
   let binderCategory = 'optcg';   // 'optcg' | 'pokemon' — drives filter UI + card-browser query
+  let binderFlair = null;         // binder flair ('wishlist' enables deck-origin surfacing)
 
   // Game-specific option lists for the card-browser filters.
   const OPTCG_COLORS     = ['Red', 'Blue', 'Green', 'Purple', 'Black', 'Yellow'];
@@ -42,6 +45,14 @@
     'Darkness','Metal','Dragon','Colorless','Fairy'
   ];
   const POKEMON_SUPERTYPES = ['Pokémon', 'Trainer', 'Energy'];
+  // Rarity sort order, rarest → most common (per game; values are disjoint so
+  // one combined list is fine). Unknown / null rarities sort last.
+  const RARITY_ORDER = [
+    // One Piece (rarest first; leaders + promos grouped at the end)
+    'SEC', 'SP CARD', 'TR', 'SR', 'R', 'UC', 'C', 'L', 'P',
+    // Pokémon
+    'Rare Secret', 'Rare Holo EX', 'Rare Holo', 'Rare', 'Uncommon', 'Common', 'Promo'
+  ];
   const POKEMON_SUBTYPES = [
     'Basic','Stage 1','Stage 2','V','VMAX','VSTAR','ex','EX','GX',
     'BREAK','Mega','LEGEND','Tag Team','Radiant','Item','Tool','Stadium','Supporter'
@@ -107,8 +118,18 @@
     currentBinderId = binder.id;
     ownerUserId = binder.user_id;
     isOwner = isLoggedIn && viewerUserId === ownerUserId;
+    // Shared binders: a collaborator (e.g. a partner) co-edits the same binder.
+    isCollab = false;
+    if (isLoggedIn && !isOwner) {
+      const { data: cr } = await window.sb
+        .from('binder_collaborators').select('user_id')
+        .eq('binder_id', currentBinderId).eq('user_id', viewerUserId).maybeSingle();
+      isCollab = !!cr;
+    }
+    canEdit = isOwner || isCollab;
     sleeveImageUrl = binder.sleeve_image_url || null;
     binderCategory = binder.category === 'pokemon' ? 'pokemon' : 'optcg';
+    binderFlair = binder.flair || null;
     applyGameUI(binderCategory);
     const profile = binder;  // alias for the rest of the function
 
@@ -116,7 +137,7 @@
     const displayName = profile.display_name || 'someone';
     const binderName  = profile.binder_name || 'binder';
     const titleText = `${displayName}'s ${binderName}`;
-    const editIcon = isOwner
+    const editIcon = canEdit
       ? `<button type="button" id="binderNameEditBtn" class="binder-name-edit-btn" aria-label="Edit binder name" title="Edit name">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.04a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66Z"/>
@@ -127,10 +148,11 @@
       `${escapeHtml(displayName)}'s <span class="binder-name-group"><em id="binderNameView">${escapeHtml(binderName)}</em>${editIcon}</span>`;
     document.title = `${titleText} — Pawpaw Ko`;
     setupShare(profile);
+    setupCollab();   // owner: manage sharing; collaborator: shows who it's shared with
     renderCategory(profile.category || 'optcg');
     renderFlair(profile.flair || 'trade');
     applyLayout(profile.layout || '4x3');
-    if (isOwner) { wireFlairSelect(); wireBinderNameEdit(); }
+    if (canEdit) { wireFlairSelect(); wireBinderNameEdit(); }
 
     if (isLoggedIn) {
       const rows = [];
@@ -142,8 +164,8 @@
       if (shops)    rows.push(metaRow(ICON_SHOP,  shops));
       document.getElementById('binderMeta').innerHTML = rows.join('');
 
-      // Show Discord contact only when viewer is NOT the owner (no need to contact yourself)
-      if (!isOwner && profile.discord_handle) {
+      // Show Discord contact only when viewer can't edit (co-editors don't need it)
+      if (!canEdit && profile.discord_handle) {
         document.getElementById('binderContact').innerHTML =
           `Contact on Discord: <strong>${escapeHtml(profile.discord_handle)}</strong>`;
       }
@@ -152,8 +174,8 @@
         `<span class="locked-pill"><a href="account.html">Sign in</a> to see location & contact</span>`;
     }
 
-    // 3. Show edit button (owners) or search toggle (non-owners)
-    if (isOwner) {
+    // 3. Show edit button (owner or collaborator) or search toggle (viewers)
+    if (canEdit) {
       actionsBar.style.display = '';
       editBtn.addEventListener('click', enterEdit);
       doneBtn.addEventListener('click', exitEdit);
@@ -166,7 +188,13 @@
       if (toggle) toggle.addEventListener('click', toggleSearch);
     }
 
-    loadListings(isOwner, isLoggedIn);
+    // Live-sync edits between co-owners viewing the same binder at once.
+    if (canEdit) subscribeBinderRealtime();
+
+    // Restore the page the user was last on for this binder (survives refresh).
+    const savedPage = parseInt(sessionStorage.getItem('pawpaw:binderPage:' + currentBinderId), 10);
+    if (savedPage > 1) pendingKeepPage = savedPage;
+    loadListings(canEdit, isLoggedIn);
   }
 
   const FLAIR_LABELS = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' };
@@ -307,6 +335,13 @@
       currentListings = allListings.slice().sort((a, b) =>
         (a.cards?.cost ?? 99) - (b.cards?.cost ?? 99) ||
         String(a.card_code).localeCompare(b.card_code));
+    } else if (mode === 'rarity') {
+      // Group by rarity (rarest first); within each rarity, newest release first.
+      const rank = c => { const i = RARITY_ORDER.indexOf(c?.cards?.rarity); return i < 0 ? 99 : i; };
+      currentListings = allListings.slice().sort((a, b) =>
+        rank(a) - rank(b) ||
+        (b.cards?.release_order || 0) - (a.cards?.release_order || 0) ||
+        String(a.card_code).localeCompare(b.card_code));
     } else if (mode === 'ptype') {
       // Pokémon elemental type. Sort by the first listed type, fall
       // back alphabetical; ties broken by HP desc then card_code.
@@ -358,7 +393,7 @@
     if (sel) {
       sel.style.display = '';
       // Default the dropdown to whichever custom layout the binder currently uses.
-      const NON_CUSTOM_SORTS = ['release','color','cost','ptype','hp','supertype'];
+      const NON_CUSTOM_SORTS = ['release','rarity','color','cost','ptype','hp','supertype'];
       if (!NON_CUSTOM_SORTS.includes(aestheticsSortMode)) {
         aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
       }
@@ -370,7 +405,7 @@
     setUrlParam('edit', '1');
     renderCurrentPage();
   }
-  function exitAesthetics() {
+  async function exitAesthetics() {
     aestheticsMode = false;
     binderContent.classList.remove('aesthetics');
     const btn = document.getElementById('aestheticsToggle');
@@ -379,7 +414,18 @@
     if (sel) sel.style.display = 'none';
     moveExcludeToggle('header');
     setUrlParam('aesthetics', null);
-    // Restore custom order for normal viewing.
+    // If an auto-sort (release / rarity / color / cost / …) is active, bake the
+    // sorted order in as the binder's new saved order so it persists after
+    // exiting — otherwise the view would snap back to the old custom order.
+    // (Manual custom layouts are already saved on drag.) Guard on equal length
+    // so a stray filtered view can never drop cards.
+    const isAuto = aestheticsSortMode !== 'custom-4x3' && aestheticsSortMode !== 'custom-3x3';
+    if (isAuto && currentListings.length === allListings.length) {
+      allListings = currentListings.slice();
+      await persistPositions();
+      aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
+      if (sel) sel.value = aestheticsSortMode;
+    }
     currentListings = allListings.slice();
     renderCurrentPage();
   }
@@ -771,6 +817,10 @@
     document.getElementById('alCardCode').textContent = card.card_code;
     document.getElementById('alQty').value = 1;
     document.getElementById('alType').value = localStorage.getItem('pawpaw:lastListingType') || 'trade';
+    // A wishlist is a "want" list — trade/sell/free status is meaningless, so
+    // hide the listing-type picker (cards still save with an inert default).
+    const alTypeRow = document.getElementById('alTypeRow');
+    if (alTypeRow) alTypeRow.style.display = (binderFlair === 'wishlist') ? 'none' : '';
     document.getElementById('alError').textContent = '';
     document.getElementById('addListingModal').style.display = '';
 
@@ -801,15 +851,19 @@
     loadCards(); // refresh browse grid in case "only my binder" is on
   }
 
+  let savingListing = false;
   async function saveListing() {
-    if (!activeCard) return;
+    if (!activeCard || savingListing) return; // guard against double-submit
     const errEl = document.getElementById('alError');
     errEl.textContent = '';
     const qty   = parseInt(document.getElementById('alQty').value, 10);
-    const ltype = document.getElementById('alType').value;
+    const isWishlist = binderFlair === 'wishlist';
+    // Wishlist cards carry no trade/sell status — store an inert default.
+    const ltype = isWishlist ? 'trade' : document.getElementById('alType').value;
     const notes = null;
     if (!qty || qty < 1) { errEl.textContent = 'Quantity must be at least 1'; return; }
 
+    savingListing = true;
     const { error } = await window.sb.from('listings').insert({
       binder_id: currentBinderId,
       card_code: activeCard.card_code,
@@ -817,15 +871,22 @@
       listing_type: ltype,
       notes,
     });
+    savingListing = false;
     if (error) { errEl.textContent = error.message; return; }
-    localStorage.setItem('pawpaw:lastListingType', ltype);
+    if (!isWishlist) localStorage.setItem('pawpaw:lastListingType', ltype);
+    // Land on the page where the just-added card sits (new cards append at the
+    // end) instead of snapping back to page 1.
+    pendingFocusCode = activeCard.card_code;
     closeAddListing();
     loadListings(true, true);   // refresh main grid (still in edit mode)
   }
 
   let allListings = [];        // full binder cache (used for client-side filtering)
+  let decksById = {};          // deck_id → {id,name,leader_card_code} for wishlist deck-origin pills
   let currentListings = [];    // currently rendered (full or filtered)
   let currentPage = 1;
+  let pendingFocusCode = null; // card_code to scroll the binder to after the next render (e.g. just-added card)
+  let pendingKeepPage = null;  // page number to stay on across the next render (e.g. after "Got it")
   let binderLayout = '4x3';  // set from DB on load
   const getPageSize = () => (binderLayout === '3x3' ? 9 : 12);
   let lastShowEditControls = false;
@@ -848,7 +909,7 @@
     if (isLoggedIn) {
       const res = await window.sb
         .from('listings')
-        .select('id, quantity, listing_type, notes, card_code, sort_order, created_at')
+        .select('id, quantity, listing_type, notes, card_code, sort_order, created_at, deck_id')
         .eq('binder_id', currentBinderId)
         .order('sort_order', { ascending: true, nullsFirst: false })
         // Un-placed cards (null sort_order) append at the end: oldest first,
@@ -881,9 +942,29 @@
       return;
     }
 
+    // Deck-origin enrichment (owner-only, wishlist binders): the auto wishlist
+    // sync stamps deck-sourced rows with listings.deck_id, where quantity = the
+    // copies still missing for that deck. Look up the deck names so the tile can
+    // attribute the card. Kept owner-only — the public RPC never returns deck_id,
+    // so anon viewers of a shared wishlist never see (possibly private) deck names.
+    decksById = {};
+    if (isOwner && binderFlair === 'wishlist') {
+      const deckIds = [...new Set((listings || []).map(l => l.deck_id).filter(Boolean))];
+      if (deckIds.length) {
+        const { data: decks } = await window.sb
+          .from('decks').select('id, name, leader_card_code').in('id', deckIds);
+        (decks || []).forEach(d => { decksById[d.id] = d; });
+      }
+    }
+
     allListings = listings || [];
+    renderDeckFilter();
     renderBinderUpdated(allListings);
-    renderListings(allListings);
+    // Render through the filter path so an active filter (e.g. while adding
+    // cards with "Show all" un-toggled) persists across reloads instead of
+    // snapping back to the full binder. With "Show all" checked or no filters
+    // set, this resolves to the full list anyway.
+    filterBinderListings();
   }
 
   function renderBinderUpdated(listings) {
@@ -921,7 +1002,21 @@
 
   function renderListings(listings) {
     currentListings = listings || [];
-    currentPage = 1;
+    if (pendingKeepPage != null) {
+      // Stay on the page the user was on (e.g. after "Got it"); renderCurrentPage
+      // clamps to the new total if a card dropped off.
+      currentPage = pendingKeepPage;
+      pendingKeepPage = null;
+    } else {
+      // Default to page 1, unless a card was flagged to focus (e.g. just added) —
+      // then jump to the page that card lands on.
+      currentPage = 1;
+      if (pendingFocusCode) {
+        const idx = currentListings.findIndex(l => l.card_code === pendingFocusCode);
+        if (idx >= 0) currentPage = Math.floor(idx / getPageSize()) + 1;
+        pendingFocusCode = null;
+      }
+    }
     renderCurrentPage();
   }
 
@@ -929,12 +1024,16 @@
     const grid     = document.getElementById('cardGrid');
     const statusEl = document.getElementById('binderStatus');
     const pagEl    = document.getElementById('binderPagination');
+    const pagTopEl = document.getElementById('binderPaginationTop');
     grid.innerHTML = '';
     pagEl.innerHTML = '';
+    if (pagTopEl) pagTopEl.innerHTML = '';
 
     const total      = currentListings.length;
     const totalPages = Math.max(1, Math.ceil(total / getPageSize()));
     if (currentPage > totalPages) currentPage = totalPages;
+    // Remember the current page so a browser refresh lands here again.
+    try { sessionStorage.setItem('pawpaw:binderPage:' + currentBinderId, currentPage); } catch (e) {}
     const start = (currentPage - 1) * getPageSize();
     const pageItems = currentListings.slice(start, start + getPageSize());
 
@@ -976,15 +1075,30 @@
       }
     }
 
-    // Pagination controls
-    if (totalPages > 1) {
-      const prev = pageButton('‹', currentPage > 1, () => { currentPage--; renderCurrentPage(); });
-      pagEl.appendChild(prev);
+    // Pagination controls — mirror the same ‹ 1 2 3 › row above and below the grid.
+    const goToPage = (p) => { currentPage = p; renderCurrentPage(); };
+    const buildPagination = (container) => {
+      if (!container || totalPages <= 1) return;
+      container.appendChild(pageButton('‹', currentPage > 1, () => goToPage(currentPage - 1)));
       for (let p = 1; p <= totalPages; p++) {
-        pagEl.appendChild(pageButton(String(p), true, () => { currentPage = p; renderCurrentPage(); }, p === currentPage));
+        container.appendChild(pageButton(String(p), true, () => goToPage(p), p === currentPage));
       }
-      const next = pageButton('›', currentPage < totalPages, () => { currentPage++; renderCurrentPage(); });
-      pagEl.appendChild(next);
+      container.appendChild(pageButton('›', currentPage < totalPages, () => goToPage(currentPage + 1)));
+    };
+    buildPagination(pagTopEl);
+    buildPagination(pagEl);
+
+    // Side arrows flanking the grid — flip a page at a time.
+    const sidePrev = document.getElementById('binderSidePrev');
+    const sideNext = document.getElementById('binderSideNext');
+    if (sidePrev && sideNext) {
+      const multi = totalPages > 1;
+      sidePrev.style.display = multi ? '' : 'none';
+      sideNext.style.display = multi ? '' : 'none';
+      sidePrev.disabled = currentPage <= 1;
+      sideNext.disabled = currentPage >= totalPages;
+      sidePrev.onclick = () => { if (currentPage > 1) goToPage(currentPage - 1); };
+      sideNext.onclick = () => { if (currentPage < totalPages) goToPage(currentPage + 1); };
     }
 
     if (lastShowEditControls) wireEditHandlers();
@@ -1007,17 +1121,30 @@
       tile.classList.add('has-sleeve');
       tile.style.backgroundImage = `url(${sleeveImageUrl})`;
     }
-    const typePill = l.listing_type
+    const deck = l.deck_id ? decksById[l.deck_id] : null;
+    const isWishlist = binderFlair === 'wishlist';
+    // Wishlist cards have no trade/sell status — never show the listing pill.
+    const typePill = (l.listing_type && !deck && !isWishlist)
       ? `<span class="listing-pill listing-${l.listing_type}">${listingLabel(l.listing_type)}</span>`
+      : '';
+    const deckPill = deck
+      ? `<span class="deck-pill" title="Needed for your &quot;${escapeHtml(deck.name || 'deck')}&quot; deck">🃏 ${escapeHtml(deck.name || 'deck')}</span>`
+      : '';
+    const qtyHtml = deck
+      ? `<span class="card-tile-qty card-tile-need">×${l.quantity}</span>`
+      : `<span class="card-tile-qty">×${l.quantity}</span>`;
+    // Owner action on a wishlist binder: mark a card as received (got it).
+    const receivedBtn = (isWishlist && lastShowEditControls)
+      ? `<button class="received-btn" data-id="${l.id}" title="Mark this card as collected">GOT IT!</button>`
       : '';
     const notesHtml = '';
     const editControls = lastShowEditControls ? `
       <div class="card-edit-controls">
         <label>Qty <input type="number" min="1" value="${l.quantity}" data-id="${l.id}" class="qty-input form-input small"></label>
-        <select class="type-select form-input small" data-id="${l.id}">
+        ${isWishlist ? '' : `<select class="type-select form-input small" data-id="${l.id}">
           ${(window.LISTING_TYPES || []).map(t =>
             `<option value="${t.value}" ${l.listing_type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
-        </select>
+        </select>`}
         <button class="btn small delete-btn" data-id="${l.id}">Remove</button>
       </div>` : '';
     tile.innerHTML = `
@@ -1027,13 +1154,50 @@
       <div class="card-tile-body">
         <div class="card-tile-meta">
           <span class="card-tile-code">${escapeHtml(l.card_code)}</span>
-          <span class="card-tile-qty">×${l.quantity}</span>
+          ${qtyHtml}
         </div>
         ${typePill}
+        ${isWishlist ? `<div class="deck-pill-slot">${deckPill}</div>` : deckPill}
+        ${receivedBtn}
         ${notesHtml}
         ${editControls}
       </div>`;
     return tile;
+  }
+
+  // Populate + reveal the "For deck" filter on wishlist binders (owner-only).
+  // Options: All cards / Deck cards only / Manual only / one per deck present.
+  let deckFilterWired = false;
+  function renderDeckFilter() {
+    const group = document.getElementById('deckFilterGroup');
+    const sel   = document.getElementById('cbDeck');
+    if (!group || !sel) return;
+
+    const deckIds = [...new Set(allListings.map(l => l.deck_id).filter(Boolean))]
+      .filter(id => decksById[id]);
+    if (!isOwner || binderFlair !== 'wishlist' || !deckIds.length) {
+      group.style.display = 'none';
+      sel.value = '';
+      return;
+    }
+
+    const prev = sel.value;
+    let html = '<option value="">All cards</option>'
+      + '<option value="__deck__">Deck cards only</option>'
+      + '<option value="__manual__">Manual only</option>';
+    deckIds
+      .map(id => decksById[id])
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .forEach(d => { html += `<option value="${d.id}">${escapeHtml(d.name || 'Deck')}</option>`; });
+    sel.innerHTML = html;
+    // Restore the prior selection if it still exists in the new option set.
+    sel.value = [...sel.options].some(o => o.value === prev) ? prev : '';
+
+    if (!deckFilterWired) {
+      sel.addEventListener('change', filterBinderListings);
+      deckFilterWired = true;
+    }
+    group.style.display = '';
   }
 
   function filterBinderListings() {
@@ -1043,6 +1207,8 @@
       renderListings(allListings);
       return;
     }
+
+    const deckSel = (document.getElementById('cbDeck') || {}).value || '';
 
     const name   = document.getElementById('cbName').value.trim().toLowerCase();
     const series = document.getElementById('cbSeries').value;
@@ -1060,6 +1226,9 @@
 
     const filtered = allListings.filter(l => {
       const c = l.cards || {};
+      if (deckSel === '__deck__'   && !l.deck_id) return false;
+      if (deckSel === '__manual__' &&  l.deck_id) return false;
+      if (deckSel && deckSel !== '__deck__' && deckSel !== '__manual__' && l.deck_id !== deckSel) return false;
       if (name) {
         const haystack = `${(c.name || '').toLowerCase()} ${l.card_code.toLowerCase()}`;
         if (!haystack.includes(name)) return false;
@@ -1105,6 +1274,161 @@
         loadListings(true, true);
       });
     });
+    grid.querySelectorAll('.received-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        burstSparkles(e.clientX, e.clientY);
+        const l = allListings.find(x => x.id === btn.dataset.id);
+        if (l) markReceived(l);
+      });
+    });
+  }
+
+  // Celebratory star + confetti burst at a point — fired when a card is "Got it".
+  function burstSparkles(x, y) {
+    const colors = ['#d8b751', '#ffd964', '#4d9de0', '#7ec96a', '#e06c9f', '#ffffff'];
+    const count = 16;
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('span');
+      const isStar = Math.random() < 0.5;
+      p.className = isStar ? 'spark spark-star' : 'spark spark-confetti';
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+      const dist = 42 + Math.random() * 58;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      if (isStar) { p.textContent = '★'; p.style.color = color; }
+      else { p.style.background = color; }
+      p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      p.style.setProperty('--dy', `${Math.sin(angle) * dist - 12}px`); // slight upward kick
+      p.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
+      p.style.animationDelay = `${Math.random() * 50}ms`;
+      document.body.appendChild(p);
+      p.addEventListener('animationend', () => p.remove());
+    }
+  }
+
+  // Mark a wishlist card as received (you got a copy). For a deck-pointed card,
+  // confirm adding the copy to that deck as owned — the deck_cards trigger then
+  // shrinks/removes the wishlist row automatically. For a manual wishlist card,
+  // drop one copy (delete the row when it hits zero).
+  let receiveQueue = Promise.resolve(); // serializes "Got it" DB writes so clicks don't race
+
+  function markReceived(l) {
+    // No confirm() here on purpose: a per-click native dialog gets suppressed by
+    // the browser after a few rapid clicks ("prevent additional dialogs"), which
+    // silently dropped clicks. The deck pill already signals deck-linked cards,
+    // and the sparkle + dropping count are the feedback.
+    // Optimistic local update — instant feedback, no full reload between clicks:
+    // one copy collected ⇒ decrement the wishlist row, remove it at zero.
+    const idx = allListings.findIndex(x => x.id === l.id);
+    if (idx >= 0) {
+      const row = allListings[idx];
+      if ((row.quantity || 1) > 1) allListings[idx] = { ...row, quantity: row.quantity - 1 };
+      else allListings.splice(idx, 1);
+    }
+    pendingKeepPage = currentPage; // stay on the page the user is viewing
+    filterBinderListings();        // re-render the current view from the updated cache
+
+    // Persist in the background, serialized so concurrent clicks can't read a
+    // stale owned/quantity and lose increments.
+    receiveQueue = receiveQueue
+      .then(() => persistReceive(l))
+      .catch(err => console.warn('mark-collected failed:', err && err.message));
+  }
+
+  async function persistReceive(l) {
+    if (l.deck_id) {
+      // Add one owned copy to the deck; its trigger shrinks/removes this row.
+      const { data: dc } = await window.sb.from('deck_cards')
+        .select('quantity, owned').eq('deck_id', l.deck_id).eq('card_code', l.card_code).maybeSingle();
+      if (dc) {
+        const newOwned = Math.min(dc.quantity, (dc.owned || 0) + 1);
+        await window.sb.from('deck_cards').update({ owned: newOwned })
+          .eq('deck_id', l.deck_id).eq('card_code', l.card_code);
+      } else {
+        await window.sb.from('listings').delete().eq('id', l.id);
+      }
+    } else {
+      // Re-read the live quantity so chained clicks decrement correctly.
+      const { data: cur } = await window.sb.from('listings').select('quantity').eq('id', l.id).maybeSingle();
+      if (!cur) return; // already gone
+      if ((cur.quantity || 1) > 1) {
+        await window.sb.from('listings').update({ quantity: cur.quantity - 1 }).eq('id', l.id);
+      } else {
+        await window.sb.from('listings').delete().eq('id', l.id);
+      }
+    }
+  }
+
+  // ---- Shared binders: manage co-owners (couples) ----
+  function setupCollab() {
+    const el = document.getElementById('binderCollab');
+    if (!el) return;
+    if (!canEdit) { el.style.display = 'none'; return; }
+    el.style.display = '';
+
+    const refresh = async () => {
+      const { data: collabs } = await window.sb
+        .rpc('binder_collaborators_list', { p_binder_id: currentBinderId });
+      if (isOwner) {
+        const chips = (collabs || []).map(c =>
+          `<span class="collab-chip">${escapeHtml(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
+        el.innerHTML = `
+          <div class="collab-row">
+            <span class="collab-label">Share with</span>
+            ${chips}
+            <button class="btn small" id="collabAddBtn">+ Add partner</button>
+          </div>
+          <p class="auth-error" id="collabError"></p>`;
+        el.querySelector('#collabAddBtn').addEventListener('click', addCollab);
+        el.querySelectorAll('.collab-remove').forEach(b =>
+          b.addEventListener('click', () => removeCollab(b.dataset.uid)));
+      } else {
+        // Collaborator view — read-only note that this is a shared binder.
+        el.innerHTML = `<div class="collab-row"><span class="collab-label">Shared binder</span> <span class="collab-none">you're a co-editor</span></div>`;
+      }
+    };
+
+    const addCollab = async () => {
+      const errEl = document.getElementById('collabError');
+      if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
+      const name = prompt("Enter your partner's display name to share this binder with them:");
+      if (!name || !name.trim()) return;
+      const { error } = await window.sb.rpc('share_binder', { p_binder_id: currentBinderId, p_display_name: name.trim() });
+      if (error) { if (errEl) errEl.textContent = error.message; return; }
+      await refresh();
+      const e2 = document.getElementById('collabError');
+      if (e2) { e2.style.color = '#7ec96a'; e2.textContent = `Invite sent to ${name.trim()} — they'll get a notification to accept.`; }
+    };
+    const removeCollab = async (uid) => {
+      if (!confirm('Remove this person from the binder?')) return;
+      const { error } = await window.sb.rpc('unshare_binder', { p_binder_id: currentBinderId, p_user_id: uid });
+      const errEl = document.getElementById('collabError');
+      if (error) { if (errEl) errEl.textContent = error.message; return; }
+      refresh();
+    };
+
+    refresh();
+  }
+
+  // Live-sync: when a co-editor changes a card, refresh this view. Best-effort —
+  // requires Realtime to be enabled for public.listings in Supabase; if it's
+  // off, both can still edit and see changes on manual refresh.
+  let realtimeChannel = null;
+  function subscribeBinderRealtime() {
+    if (!window.sb || !window.sb.channel || !currentBinderId) return;
+    if (realtimeChannel) { try { window.sb.removeChannel(realtimeChannel); } catch (e) {} realtimeChannel = null; }
+    realtimeChannel = window.sb
+      .channel('binder-' + currentBinderId)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'listings', filter: 'binder_id=eq.' + currentBinderId },
+        () => {
+          if (aestheticsMode) return; // don't yank the grid out from under a drag
+          pendingKeepPage = currentPage;
+          loadListings(canEdit, lastIsLoggedIn);
+        })
+      .subscribe();
   }
 
   function setupShare(profile) {

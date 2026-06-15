@@ -99,7 +99,7 @@
     const countEl = document.getElementById('bindersCount');
     wrap.innerHTML = '';
 
-    const { data: binders, error } = await window.sb
+    const { data: owned, error } = await window.sb
       .from('binders')
       .select('id, name, description, sleeve_image_url, flair, category, created_at')
       .eq('user_id', userId)
@@ -107,7 +107,13 @@
 
     if (error) { countEl.textContent = error.message; return; }
 
-    if (!binders || binders.length === 0) {
+    // Binders a partner has shared with this account (co-edit). Tag them so the
+    // card can show a "Shared" badge; they're owned by someone else.
+    const { data: shared } = await window.sb.rpc('shared_binders');
+    (shared || []).forEach(b => { b._shared = true; });
+    const binders = [...(owned || []), ...(shared || [])];
+
+    if (binders.length === 0) {
       countEl.textContent = 'No binders yet — create one to get started.';
       return;
     }
@@ -155,6 +161,7 @@
               <div class="binder-card-pills">
                 <span class="category-pill cat-${cat}">${escapeHtml(catLabel)}</span>
                 <span class="binder-flair-pill flair-${flair}">${escapeHtml(flairLabel)}</span>
+                ${b._shared ? '<span class="binder-flair-pill flair-shared">Shared</span>' : ''}
               </div>
               <div class="binder-card-count">${count} listing${count === 1 ? '' : 's'}</div>
             </div>
