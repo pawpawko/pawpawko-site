@@ -18,6 +18,12 @@ create table if not exists public.binder_collaborators (
   primary key (binder_id, user_id)
 );
 create index if not exists binder_collaborators_user_idx on public.binder_collaborators(user_id);
+-- One partner per binder (couples, not groups): a binder may have at most ONE
+-- collaborator row. This is the hard backstop; share_binder/respond_binder_invite
+-- also guard against it for friendly error messages. NB: if any binder already
+-- has >1 collaborator in prod, trim it to one before this index will build.
+create unique index if not exists one_collaborator_per_binder
+  on public.binder_collaborators (binder_id);
 
 -- ---------- membership helper ----------
 -- owner OR collaborator. SECURITY DEFINER so RLS policies can call it without
@@ -76,11 +82,16 @@ drop function if exists public.share_binder(uuid, text);
 create or replace function public.share_binder(p_binder_id uuid, p_display_name text)
 returns void
 language plpgsql security definer set search_path = public as $$
-declare v_owner uuid; v_partner uuid;
+declare v_owner uuid; v_partner uuid; v_flair text;
 begin
-  select b.user_id into v_owner from public.binders b where b.id = p_binder_id;
+  select b.user_id, b.flair into v_owner, v_flair from public.binders b where b.id = p_binder_id;
   if v_owner is null then raise exception 'Binder not found'; end if;
   if v_owner is distinct from auth.uid() then raise exception 'Only the binder owner can share it'; end if;
+  -- Only trade binders can have a partner.
+  if v_flair is distinct from 'trade' then raise exception 'Only trade binders can be shared with a partner'; end if;
+  -- One partner per binder.
+  if exists (select 1 from public.binder_collaborators c where c.binder_id = p_binder_id) then
+    raise exception 'This binder already has a partner'; end if;
 
   select p.user_id into v_partner from public.profiles p
    where lower(p.display_name) = lower(btrim(p_display_name))

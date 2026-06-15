@@ -1366,22 +1366,31 @@
     const el = document.getElementById('binderCollab');
     if (!el) return;
     if (!canEdit) { el.style.display = 'none'; return; }
+    // Only trade binders support a co-editing partner — wishlist/flex/lgs can't
+    // be shared. (Collaborators only ever exist on trade binders, so the
+    // collaborator-view branch below is unaffected.)
+    if (isOwner && binderFlair !== 'trade') { el.style.display = 'none'; return; }
     el.style.display = '';
 
     const refresh = async () => {
       const { data: collabs } = await window.sb
         .rpc('binder_collaborators_list', { p_binder_id: currentBinderId });
       if (isOwner) {
-        const chips = (collabs || []).map(c =>
+        const list = collabs || [];
+        const chips = list.map(c =>
           `<span class="collab-chip">${escapeHtml(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
+        // One partner per binder — only offer "Add" when there isn't one yet.
+        const addBtn = list.length === 0
+          ? `<button class="btn small" id="collabAddBtn">+ Add partner</button>` : '';
         el.innerHTML = `
           <div class="collab-row">
             <span class="collab-label">Share with</span>
             ${chips}
-            <button class="btn small" id="collabAddBtn">+ Add partner</button>
+            ${addBtn}
           </div>
           <p class="auth-error" id="collabError"></p>`;
-        el.querySelector('#collabAddBtn').addEventListener('click', addCollab);
+        const addEl = el.querySelector('#collabAddBtn');
+        if (addEl) addEl.addEventListener('click', addCollab);
         el.querySelectorAll('.collab-remove').forEach(b =>
           b.addEventListener('click', () => removeCollab(b.dataset.uid)));
       } else {

@@ -35,26 +35,27 @@ drop function if exists public.share_binder(uuid, text);
 create or replace function public.share_binder(p_binder_id uuid, p_display_name text)
 returns void
 language plpgsql security definer set search_path = public as $$
-declare v_owner uuid; v_partner uuid; v_bname text; v_fname text;
+declare v_owner uuid; v_partner uuid; v_bname text; v_fname text; v_flair text;
 begin
-  select b.user_id, b.name into v_owner, v_bname from public.binders b where b.id = p_binder_id;
+  select b.user_id, b.name, b.flair into v_owner, v_bname, v_flair from public.binders b where b.id = p_binder_id;
   if v_owner is null then raise exception 'Binder not found'; end if;
   if v_owner is distinct from auth.uid() then raise exception 'Only the binder owner can share it'; end if;
+  -- Only trade binders can have a partner (wishlist/flex/lgs are not shareable).
+  if v_flair is distinct from 'trade' then raise exception 'Only trade binders can be shared with a partner'; end if;
+  -- One partner per binder: block if it already has a collaborator OR any pending invite.
+  if exists (select 1 from public.binder_collaborators c where c.binder_id = p_binder_id) then
+    raise exception 'This binder already has a partner'; end if;
+  if exists (select 1 from public.notifications n
+              where n.type = 'binder_invite' and n.status = 'pending'
+                and (n.data->>'binder_id')::uuid = p_binder_id) then
+    raise exception 'An invite for this binder is already pending';
+  end if;
 
   select p.user_id into v_partner from public.profiles p
    where lower(p.display_name) = lower(btrim(p_display_name))
    limit 1;
   if v_partner is null then raise exception 'No account found with that name'; end if;
   if v_partner = v_owner then raise exception 'That account already owns this binder'; end if;
-  if exists (select 1 from public.binder_collaborators c
-              where c.binder_id = p_binder_id and c.user_id = v_partner) then
-    raise exception 'Already shared with that account';
-  end if;
-  if exists (select 1 from public.notifications n
-              where n.user_id = v_partner and n.type = 'binder_invite' and n.status = 'pending'
-                and (n.data->>'binder_id')::uuid = p_binder_id) then
-    raise exception 'An invite is already pending for that account';
-  end if;
 
   select display_name into v_fname from public.profiles where user_id = auth.uid();
   insert into public.notifications (user_id, type, status, data)
@@ -85,6 +86,13 @@ begin
 
   if p_accept then
     if v_binder is null or v_cat is null then raise exception 'That binder no longer exists'; end if;
+    if v_flair is distinct from 'trade' then raise exception 'Only trade binders can be shared with a partner'; end if;
+    -- One partner per binder: if someone already joined (e.g. two invites were
+    -- out and one was accepted first), reject this accept with a clear message
+    -- instead of letting the unique index throw a raw error.
+    if exists (select 1 from public.binder_collaborators c where c.binder_id = v_binder) then
+      raise exception 'This binder already has a partner';
+    end if;
     -- Overwrite: the partner now uses the shared trade binder, so drop their own
     -- trade binder of the same game (the UI warns before this runs).
     if v_flair = 'trade' then
