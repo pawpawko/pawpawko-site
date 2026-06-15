@@ -220,19 +220,27 @@ create trigger deck_cards_notify_collect
   after update on public.deck_cards
   for each row execute function public.deck_cards_notify_collect();
 
--- ---------- RPC: share a deck (invite the trade-binder partner) ----------
+-- ---------- RPC: share a deck (invite a partner by display name) ----------
+-- Mirrors share_binder: you type the partner's display name. The named account
+-- MUST be your trade-binder co-owner for this deck's game.
 drop function if exists public.share_deck(uuid);
-create or replace function public.share_deck(p_deck_id uuid)
+drop function if exists public.share_deck(uuid, text);
+create or replace function public.share_deck(p_deck_id uuid, p_display_name text)
 returns void
 language plpgsql security definer set search_path = public as $$
-declare v_owner uuid; v_game text; v_dname text; v_partner uuid; v_fname text;
+declare v_owner uuid; v_game text; v_dname text; v_partner uuid; v_named uuid; v_fname text;
 begin
   select user_id, game, name into v_owner, v_game, v_dname
     from public.decks where id = p_deck_id;
   if v_owner is null then raise exception 'Deck not found'; end if;
   if v_owner is distinct from auth.uid() then raise exception 'Only the deck owner can share it'; end if;
 
-  -- The deck may ONLY be shared with your trade-binder partner for this game:
+  select user_id into v_named from public.profiles
+   where lower(display_name) = lower(btrim(p_display_name)) limit 1;
+  if v_named is null then raise exception 'No account found with that name'; end if;
+  if v_named = v_owner then raise exception 'That account already owns this deck'; end if;
+
+  -- The named account must be your trade-binder partner for this game:
   -- the other member of your shared trade binder (you as owner OR collaborator).
   select case when b.user_id = auth.uid() then c.user_id else b.user_id end
     into v_partner
@@ -243,6 +251,9 @@ begin
    limit 1;
   if v_partner is null then
     raise exception 'Share a trade binder with your partner first — decks can only be shared with that partner';
+  end if;
+  if v_partner is distinct from v_named then
+    raise exception 'You can only share a deck with your trade-binder partner';
   end if;
 
   -- One partner per deck; no double invites.
@@ -260,8 +271,8 @@ begin
           jsonb_build_object('deck_id', p_deck_id, 'deck_name', v_dname,
                              'from_user', auth.uid(), 'from_name', coalesce(v_fname, 'Someone')));
 end $$;
-revoke all on function public.share_deck(uuid) from public;
-grant execute on function public.share_deck(uuid) to authenticated;
+revoke all on function public.share_deck(uuid, text) from public;
+grant execute on function public.share_deck(uuid, text) to authenticated;
 
 -- ---------- RPC: respond to a deck invite ----------
 drop function if exists public.respond_deck_invite(uuid, boolean);

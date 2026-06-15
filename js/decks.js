@@ -391,9 +391,9 @@
         const list = collabs || [];
         const chips = list.map(c =>
           `<span class="collab-chip">${esc(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
-        // One partner per deck — only offer "Share" when there isn't one yet.
+        // One partner per deck — only offer "Add" when there isn't one yet.
         const addBtn = list.length === 0
-          ? `<button class="btn small" id="deckShareBtn" type="button">Share with partner</button>` : '';
+          ? `<button class="btn small" id="deckShareBtn" type="button">+ Add partner</button>` : '';
         el.innerHTML = `
           <div class="collab-row">
             <span class="collab-label">Share with</span>
@@ -413,11 +413,13 @@
     const shareDeck = async () => {
       const errEl = $('deckCollabError');
       if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
-      const { error } = await window.sb.rpc('share_deck', { p_deck_id: deck.id });
+      const name = prompt("Enter your partner's display name to share this deck with them:");
+      if (!name || !name.trim()) return;
+      const { error } = await window.sb.rpc('share_deck', { p_deck_id: deck.id, p_display_name: name.trim() });
       if (error) { if (errEl) errEl.textContent = error.message; return; }
       await refresh();
       const e2 = $('deckCollabError');
-      if (e2) { e2.style.color = '#7ec96a'; e2.textContent = "Invite sent to your partner — they'll get a notification to accept."; }
+      if (e2) { e2.style.color = '#7ec96a'; e2.textContent = `Invite sent to ${name.trim()} — they'll get a notification to accept.`; }
     };
     const unshareDeck = async (uid) => {
       if (!confirm('Remove your partner from this deck?')) return;
