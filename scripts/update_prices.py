@@ -27,7 +27,7 @@ import requests
 from dotenv import load_dotenv
 
 try:
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 except Exception:
     pass
 
@@ -114,21 +114,22 @@ def is_stale(row, cutoff):
     return stamped < cutoff
 
 
-def flush(updates):
-    """Bulk-write provided price columns; merge-duplicates leaves other columns
-    untouched (rows already exist, so only price_usd/price_updated_at change)."""
-    if not updates:
-        return
-    r = sb_session.post(
+def write_price(code, price, now_iso):
+    """UPDATE only the price columns for one card. Must be a PATCH, not a
+    merge-duplicates POST: cards.name is NOT NULL, so an upsert of a partial
+    row attempts an INSERT and trips the not-null constraint (ON CONFLICT
+    doesn't catch NOT NULL). Same reason backfill_optcg_types.py uses PATCH."""
+    r = sb_session.patch(
         f"{SUPABASE_URL}/rest/v1/cards",
-        headers={**SB, "Content-Type": "application/json",
-                 "Prefer": "resolution=merge-duplicates,return=minimal"},
-        json=updates,
+        headers={**SB, "Content-Type": "application/json", "Prefer": "return=minimal"},
+        params={"game": f"eq.{GAME}", "card_code": f"eq.{code}"},
+        json={"price_usd": price, "price_updated_at": now_iso},
         timeout=60,
     )
-    if r.status_code not in (200, 201, 204):
-        print(f"  ! write failed: {r.status_code} {r.text[:400]}")
-        sys.exit(1)
+    if r.status_code not in (200, 204):
+        print(f"  ! {code}: write failed {r.status_code} {r.text[:200]}")
+        return False
+    return True
 
 
 def main():
@@ -156,25 +157,23 @@ def main():
         return
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    pending, priced, blank = [], 0, 0
+    priced, blank, failed = 0, 0, 0
     print("[2] Fetching prices...")
     for i, code in enumerate(targets, 1):
         price = fetch_price(code)
-        if price is None:
+        if not write_price(code, price, now_iso):
+            failed += 1
+        elif price is None:
             blank += 1
         else:
             priced += 1
-        pending.append({"game": GAME, "card_code": code,
-                        "price_usd": price, "price_updated_at": now_iso})
-        if len(pending) >= 200:
-            flush(pending)
-            pending = []
         if i % 50 == 0 or i == len(targets):
-            print(f"    {i}/{len(targets)}  (priced {priced}, no-price {blank})")
+            print(f"    {i}/{len(targets)}  (priced {priced}, no-price {blank}, failed {failed})")
         time.sleep(THROTTLE)
-    flush(pending)
 
-    print(f"=== Done. {priced} priced, {blank} had no USD price (left null). ===")
+    print(f"=== Done. {priced} priced, {blank} had no USD price (left null), {failed} write errors. ===")
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

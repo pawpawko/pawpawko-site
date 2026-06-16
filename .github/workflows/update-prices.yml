@@ -1,0 +1,48 @@
+name: Update card prices
+
+# Keeps cards.price_usd fresh for the Decks "Cost to Finish" calculator.
+# Runs scripts/update_prices.py against prod Supabase on a schedule so the
+# cached prices stay current without anyone running the script by hand.
+#
+# Requires repo secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# (Settings > Secrets and variables > Actions). The service-role key is the
+# same value that lives in scripts/.env locally.
+#
+# NOTE: harmless to merge before the migration is applied, but every run will
+# fail until scripts/card_prices_migration.sql has been run in Supabase (the
+# price_usd / price_updated_at columns must exist).
+
+on:
+  schedule:
+    # Weekly full refresh, Sundays 08:00 UTC. Keeps every base card <= 7 days old.
+    # For lighter, more frequent runs, switch to a daily incremental instead:
+    #   - cron: '0 8 * * *'   and drop "--full" from the run step below
+    #   (incremental only re-prices unpriced or >7d-stale cards).
+    - cron: '0 8 * * 0'
+  workflow_dispatch:        # allow manual "Run workflow" from the Actions tab
+
+concurrency:
+  group: update-prices
+  cancel-in-progress: false # let an in-flight run finish rather than overlap
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45     # a full scrape is ~25-35 min; guards against a hang
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Update prices
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/update_prices.py --full
