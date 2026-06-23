@@ -438,40 +438,66 @@
     el.style.display = '';
 
     const refresh = async () => {
-      const { data: collabs } = await window.sb.rpc('deck_collaborators_list', { p_deck_id: deck.id });
-      if (isDeckOwner) {
-        const list = collabs || [];
-        const chips = list.map(c =>
-          `<span class="collab-chip">${esc(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
-        // One partner per deck — only offer "Add" when there isn't one yet.
-        const addBtn = list.length === 0
-          ? `<button class="btn small" id="deckShareBtn" type="button">+ Add partner</button>` : '';
-        el.innerHTML = `
-          <div class="collab-row">
-            <span class="collab-label">Share with</span>
-            ${chips}
-            ${addBtn}
-          </div>
-          <p class="auth-error" id="deckCollabError"></p>`;
-        const addEl = $('deckShareBtn');
-        if (addEl) addEl.addEventListener('click', shareDeck);
-        el.querySelectorAll('.collab-remove').forEach(b =>
-          b.addEventListener('click', () => unshareDeck(b.dataset.uid)));
-      } else {
+      if (!isDeckOwner) {
         el.innerHTML = `<div class="collab-row"><span class="collab-label">Shared deck</span> <span class="collab-none">you're a co-editor</span></div>`;
+        return;
       }
+      // Accepted collaborator(s) take priority; otherwise surface a still-pending
+      // invite so the owner sees who they invited in place of the "+ Add" button.
+      const [{ data: collabs }, { data: pending }] = await Promise.all([
+        window.sb.rpc('deck_collaborators_list', { p_deck_id: deck.id }),
+        window.sb.rpc('deck_pending_invite', { p_deck_id: deck.id }),
+      ]);
+      const list = collabs || [];
+      const invite = (pending && pending[0]) || null;
+
+      let body;
+      if (list.length) {
+        // One partner per deck — an accepted co-editor; offer removal only.
+        body = list.map(c =>
+          `<span class="collab-chip">${esc(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
+      } else if (invite) {
+        // Shared, awaiting acceptance — show the invited partner's name with a ×
+        // to rescind the pending invite.
+        body = `<span class="collab-chip">${esc(invite.display_name || 'partner')} <span style="opacity:.65;font-size:.82em;font-style:italic;">pending</span><button class="collab-remove" data-rescind="1" title="Cancel invite" aria-label="Cancel invite">×</button></span>`;
+      } else {
+        body = `<button class="btn small" id="deckShareBtn" type="button">+ Add partner</button>`;
+      }
+      el.innerHTML = `
+        <div class="collab-row">
+          <span class="collab-label">Share with</span>
+          ${body}
+        </div>
+        <p class="auth-error" id="deckCollabError"></p>`;
+      const addEl = $('deckShareBtn');
+      if (addEl) addEl.addEventListener('click', shareDeck);
+      el.querySelectorAll('.collab-remove').forEach(b =>
+        b.addEventListener('click', () => b.dataset.rescind ? rescindInvite() : unshareDeck(b.dataset.uid)));
     };
 
     const shareDeck = async () => {
       const errEl = $('deckCollabError');
       if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
-      const name = prompt("Enter your partner's display name to share this deck with them:");
-      if (!name || !name.trim()) return;
+      // Prefill the box with your trade-binder partner for this game — the only
+      // account a deck can be shared with. Editable; OK confirms. Empty when no
+      // trade binder is shared yet (share_deck then raises a helpful error).
+      let suggested = '';
+      const { data: tp } = await window.sb.rpc('deck_trade_partner', { p_deck_id: deck.id });
+      if (tp && tp[0]) suggested = tp[0].display_name || '';
+      const name = prompt("Share this deck with your trade-binder partner. They'll get a notification to accept.", suggested);
+      if (name === null || !name.trim()) return;
       const { error } = await window.sb.rpc('share_deck', { p_deck_id: deck.id, p_display_name: name.trim() });
       if (error) { if (errEl) errEl.textContent = error.message; return; }
       await refresh();
       const e2 = $('deckCollabError');
       if (e2) { e2.style.color = '#7ec96a'; e2.textContent = `Invite sent to ${name.trim()} — they'll get a notification to accept.`; }
+    };
+    const rescindInvite = async () => {
+      if (!confirm('Cancel the pending invite?')) return;
+      const { error } = await window.sb.rpc('rescind_deck_invite', { p_deck_id: deck.id });
+      const errEl = $('deckCollabError');
+      if (error) { if (errEl) errEl.textContent = error.message; return; }
+      refresh();
     };
     const unshareDeck = async (uid) => {
       if (!confirm('Remove your partner from this deck?')) return;

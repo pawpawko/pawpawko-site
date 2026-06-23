@@ -252,6 +252,24 @@ renderAuthButton();
 
   async function respond(id, accept, kind) {
     if (kind === 'deck') {
+      // Accepting REPLACES the recipient's own deck for this leader (the server
+      // deletes it). Warn first when such a deck actually exists.
+      if (accept) {
+        const n = notifs.find(x => x.id === id);
+        const d = (n && n.data) || {};
+        if (d.leader_card_code && d.game) {
+          const { data: au } = await window.sb.auth.getUser();
+          const myId = au && au.user && au.user.id;
+          if (myId) {
+            const { data: own } = await window.sb.from('decks')
+              .select('id,name').eq('user_id', myId).eq('game', d.game)
+              .eq('leader_card_code', d.leader_card_code).limit(1);
+            const mine = own && own[0];
+            if (mine && mine.id !== d.deck_id &&
+                !confirm(`Accepting permanently DELETES your own deck "${mine.name}" for this leader — you'll co-edit "${d.deck_name}" instead. Continue?`)) return;
+          }
+        }
+      }
       const { error } = await window.sb.rpc('respond_deck_invite', { p_notification_id: id, p_accept: accept });
       if (error) { alert(error.message); return; }
       await load();
