@@ -228,9 +228,9 @@ drop function if exists public.share_deck(uuid, text);
 create or replace function public.share_deck(p_deck_id uuid, p_display_name text)
 returns void
 language plpgsql security definer set search_path = public as $$
-declare v_owner uuid; v_game text; v_dname text; v_partner uuid; v_named uuid; v_fname text;
+declare v_owner uuid; v_game text; v_dname text; v_partner uuid; v_named uuid; v_fname text; v_leader text;
 begin
-  select user_id, game, name into v_owner, v_game, v_dname
+  select user_id, game, name, leader_card_code into v_owner, v_game, v_dname, v_leader
     from public.decks where id = p_deck_id;
   if v_owner is null then raise exception 'Deck not found'; end if;
   if v_owner is distinct from auth.uid() then raise exception 'Only the deck owner can share it'; end if;
@@ -269,6 +269,7 @@ begin
   insert into public.notifications (user_id, type, status, data)
   values (v_partner, 'deck_invite', 'pending',
           jsonb_build_object('deck_id', p_deck_id, 'deck_name', v_dname,
+                             'leader_card_code', v_leader, 'game', v_game,
                              'from_user', auth.uid(), 'from_name', coalesce(v_fname, 'Someone')));
 end $$;
 revoke all on function public.share_deck(uuid, text) from public;
@@ -279,7 +280,7 @@ drop function if exists public.respond_deck_invite(uuid, boolean);
 create or replace function public.respond_deck_invite(p_notification_id uuid, p_accept boolean)
 returns void
 language plpgsql security definer set search_path = public as $$
-declare n public.notifications; v_deck uuid; v_from uuid; v_game text; v_name text; v_by text; v_partner uuid;
+declare n public.notifications; v_deck uuid; v_from uuid; v_game text; v_name text; v_by text; v_partner uuid; v_leader text;
 begin
   select * into n from public.notifications
    where id = p_notification_id and user_id = auth.uid() and type = 'deck_invite';
@@ -289,7 +290,7 @@ begin
   v_deck := (n.data->>'deck_id')::uuid;
   v_from := (n.data->>'from_user')::uuid;
   select display_name into v_by from public.profiles where user_id = auth.uid();
-  select game, name into v_game, v_name from public.decks where id = v_deck;
+  select game, name, leader_card_code into v_game, v_name, v_leader from public.decks where id = v_deck;
 
   if p_accept then
     if v_game is null then raise exception 'That deck no longer exists'; end if;
@@ -307,6 +308,13 @@ begin
     if v_partner is distinct from auth.uid() then
       raise exception 'You are no longer your partner''s trade-binder co-owner for this game';
     end if;
+
+    -- The shared deck REPLACES the recipient's own deck for this leader: destroy
+    -- it so they don't keep two decks for the same leader. The delete cascades
+    -- its deck_cards and fires decks_cleanup_wishlist to pull its wishlist rows.
+    delete from public.decks
+     where user_id = auth.uid() and game = v_game
+       and leader_card_code = v_leader and id <> v_deck;
 
     insert into public.deck_collaborators (deck_id, user_id, added_by)
     values (v_deck, auth.uid(), v_from)
@@ -376,3 +384,75 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.shared_decks() from public;
 grant execute on function public.shared_decks() to authenticated;
+
+-- ---------- RPC: the caller's trade-binder partner for a deck's game ----------
+-- Powers the share form's autofill: a deck can only be shared with the partner
+-- you co-own a trade binder with for that game, so prefill that name. Returns
+-- no rows when no trade binder is shared (UI leaves the box empty; share_deck
+-- then raises the "share a trade binder first" error on submit). Owner-only.
+drop function if exists public.deck_trade_partner(uuid);
+create or replace function public.deck_trade_partner(p_deck_id uuid)
+returns table (user_id uuid, display_name text)
+language plpgsql stable security definer set search_path = public as $$
+declare v_game text; v_partner uuid;
+begin
+  select d.game into v_game from public.decks d
+   where d.id = p_deck_id and d.user_id = auth.uid();
+  if v_game is null then return; end if;             -- not found / not owner
+  -- Same partner resolution share_deck uses: the other member of the shared
+  -- trade binder for this game (caller as owner OR collaborator).
+  select case when b.user_id = auth.uid() then c.user_id else b.user_id end
+    into v_partner
+    from public.binder_collaborators c
+    join public.binders b on b.id = c.binder_id
+   where b.flair = 'trade' and b.category = v_game
+     and (b.user_id = auth.uid() or c.user_id = auth.uid())
+   limit 1;
+  if v_partner is null then return; end if;
+  return query
+    select pr.user_id, pr.display_name from public.profiles pr
+     where pr.user_id = v_partner;
+end $$;
+revoke all on function public.deck_trade_partner(uuid) from public;
+grant execute on function public.deck_trade_partner(uuid) to authenticated;
+
+-- ---------- RPC: the pending invite for a deck (owner-only) ----------
+-- After share_deck the partner holds a pending deck_invite notification, but
+-- notifications are RLS read-own so the OWNER can't see it directly. This lets
+-- the owner's UI replace "+ Add partner" with the invited partner's name while
+-- acceptance is pending. SECURITY DEFINER, gated to the deck owner.
+drop function if exists public.deck_pending_invite(uuid);
+create or replace function public.deck_pending_invite(p_deck_id uuid)
+returns table (user_id uuid, display_name text, notification_id uuid)
+language sql stable security definer set search_path = public as $$
+  select n.user_id, p.display_name, n.id
+  from public.notifications n
+  join public.decks d on d.id = (n.data->>'deck_id')::uuid
+  join public.profiles p on p.user_id = n.user_id
+  where n.type = 'deck_invite' and n.status = 'pending'
+    and (n.data->>'deck_id')::uuid = p_deck_id
+    and d.user_id = auth.uid()                        -- only the deck owner
+  limit 1;
+$$;
+revoke all on function public.deck_pending_invite(uuid) from public;
+grant execute on function public.deck_pending_invite(uuid) to authenticated;
+
+-- ---------- RPC: rescind a still-pending deck invite (owner-only) ----------
+-- Lets the owner cancel a mistaken/stale invite that hasn't been accepted yet,
+-- so the "+ Add partner" affordance can come back. (unshare_deck handles the
+-- already-accepted case.)
+drop function if exists public.rescind_deck_invite(uuid);
+create or replace function public.rescind_deck_invite(p_deck_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare v_owner uuid;
+begin
+  select user_id into v_owner from public.decks where id = p_deck_id;
+  if v_owner is null then raise exception 'Deck not found'; end if;
+  if v_owner is distinct from auth.uid() then raise exception 'Only the deck owner can do that'; end if;
+  delete from public.notifications
+   where type = 'deck_invite' and status = 'pending'
+     and (data->>'deck_id')::uuid = p_deck_id;
+end $$;
+revoke all on function public.rescind_deck_invite(uuid) from public;
+grant execute on function public.rescind_deck_invite(uuid) to authenticated;
