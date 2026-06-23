@@ -110,11 +110,10 @@ img { max-width: 100%; height: auto; display: block; }
   .form-input, .form-label { font-size: 0.92rem; }
   .form-input { padding: 0.55rem 0.7rem; }
 
-  /* Card tile inner text */
-  .card-tile-code  { font-size: 0.72rem; }
-  .card-tile-qty   { font-size: 1.2rem; }
+  /* Card tile inner text — code/qty/pill scale fluidly to tile width via
+     container queries (see .card-tile container-type), so no fixed mobile
+     overrides here; they'd cap the scaling and re-introduce clipping. */
   .card-tile-notes { font-size: 0.72rem; }
-  .listing-pill    { font-size: 0.58rem; padding: 0.16rem 0.5rem; }
 
   /* Binder flair chips compress on mobile */
   .binder-flair-pill,
@@ -1527,6 +1526,10 @@ body.binder-editing .share-popover { display: none !important; }
   display: flex;
   flex-direction: column;
   transition: var(--transition);
+  /* Establish a query container so the tile's inner text/padding can scale to
+     the tile's own width (cqi units below) — keeps info from clipping when the
+     binder stays 4-wide on small phones. */
+  container-type: inline-size;
 }
 .card-tile:hover { border-color: var(--border-accent); }
 .card-tile-img {
@@ -1555,6 +1558,7 @@ body.binder-editing .share-popover { display: none !important; }
   letter-spacing: 0.05em;
 }
 .card-tile-body { padding: 0.75rem; }
+.card-tile-body { padding: clamp(0.3rem, 6cqi, 0.75rem); }
 .card-tile-name {
   font-family: var(--font-serif);
   font-size: 0.95rem;
@@ -1562,6 +1566,7 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .card-tile-code {
   font-size: 0.75rem;
+  font-size: clamp(0.5rem, 10cqi, 0.75rem);
   color: var(--text-muted);
   letter-spacing: 0.1em;
   margin-bottom: 0.5rem;
@@ -1570,14 +1575,20 @@ body.binder-editing .share-popover { display: none !important; }
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  /* Wrap qty under the code when the tile is too narrow for both on one row,
+     so neither gets clipped. */
+  flex-wrap: wrap;
+  gap: 0.1rem 0.4rem;
   margin-bottom: 0.55rem;
 }
+.card-tile-meta > * { min-width: 0; }
 .card-tile-meta .card-tile-code { margin-bottom: 0; }
 .card-tile-qty {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   font-variant-numeric: tabular-nums;
   color: #f4d99c;
   font-size: 1.4rem;
+  font-size: clamp(0.85rem, 18cqi, 1.4rem);
   font-weight: 500;
   letter-spacing: 0.02em;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
@@ -1592,11 +1603,14 @@ body.binder-editing .share-popover { display: none !important; }
 /* Listing type pills */
 .listing-pill {
   display: inline-block;
+  max-width: 100%;
   font-family: var(--font-serif);
   font-size: 0.65rem;
-  letter-spacing: 0.18em;
+  font-size: clamp(0.5rem, 9cqi, 0.65rem);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 0.2rem 0.6rem;
+  padding: clamp(0.12rem, 2cqi, 0.2rem) clamp(0.3rem, 5cqi, 0.6rem);
   border: 1px solid var(--accent);
   color: var(--accent);
 }
@@ -2093,6 +2107,12 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 .binder-content.layout-3x3.searching .card-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+/* Tighten the gap on phones so the (still 4-wide) tiles get more room. */
+@media (max-width: 768px) {
+  .binder-cards-section .card-grid,
+  .binder-content.editing .card-grid,
+  .binder-content.searching .card-grid { gap: 0.5rem; }
+}
 
 /* Empty slot placeholder (when binder has fewer than PAGE_SIZE cards) */
 .card-tile.empty-slot {
@@ -2160,6 +2180,94 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
    top + bottom page bars still handle flipping. */
 @media (max-width: 768px) {
   .binder-side-nav { display: none !important; }
+}
+
+/* ============================================
+   Binder card lightbox — tap a card to expand,
+   then swipe / arrow / key through the binder.
+   ============================================ */
+.card-tile.expandable { cursor: zoom-in; }
+/* In edit mode the tap-to-expand is suppressed (inline controls take over), so
+   don't advertise the zoom cursor. */
+.binder-content.editing .card-tile.expandable { cursor: default; }
+.binder-lightbox {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+  background: rgba(8, 6, 14, 0.92);
+  /* Let vertical scroll/gestures pass to the page; we handle horizontal swipe. */
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+.binder-lightbox[hidden] { display: none; }
+.bl-stage {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.9rem; max-width: 100%; max-height: 100%;
+}
+.bl-img {
+  max-width: min(90vw, 440px);
+  max-height: 68vh;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.bl-placeholder {
+  width: min(72vw, 300px);
+  aspect-ratio: 0.7 / 1;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  font-family: var(--font-serif);
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.bl-info { text-align: center; color: #ede8df; max-width: 90vw; }
+.bl-name { font-family: var(--font-serif); font-size: 1.05rem; margin-bottom: 0.35rem; }
+.bl-meta {
+  display: flex; align-items: baseline; justify-content: center;
+  gap: 0.8rem; color: var(--text-muted);
+}
+.bl-code { letter-spacing: 0.1em; font-size: 0.82rem; }
+.bl-qty {
+  color: #f4d99c; font-size: 1.1rem; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.bl-pills { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 0.55rem; }
+.bl-close {
+  position: absolute; top: 1rem; right: 1rem;
+  width: 2.6rem; height: 2.6rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 16, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff; font-size: 1.2rem; line-height: 1; cursor: pointer;
+}
+.bl-close:hover { background: rgba(10, 8, 16, 0.85); }
+.bl-counter {
+  position: absolute; bottom: 1.1rem; left: 50%; transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-serif); font-size: 0.8rem; letter-spacing: 0.1em;
+}
+.bl-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 3rem; height: 3rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff; font-family: var(--font-serif); font-size: 2rem; line-height: 1;
+  cursor: pointer;
+}
+.bl-nav:hover:not(:disabled) { background: rgba(10, 8, 16, 0.85); }
+.bl-prev { left: 1rem; }
+.bl-next { right: 1rem; }
+.bl-nav:disabled { opacity: 0.25; cursor: default; }
+@media (max-width: 768px) {
+  .binder-lightbox { padding: 1rem; }
+  .bl-nav { width: 2.4rem; height: 2.4rem; font-size: 1.5rem; }
+  .bl-prev { left: 0.4rem; }
+  .bl-next { right: 0.4rem; }
+  .bl-img { max-height: 64vh; }
 }
 
 /* Mobile: stack panels vertically; binder stays 5 wide but tiles shrink */
