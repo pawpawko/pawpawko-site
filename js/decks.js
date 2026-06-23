@@ -67,9 +67,19 @@
 
     $('ndClose').addEventListener('click', closeNewDeck);
     $('ndOverlay').addEventListener('click', (e) => { if (e.target === $('ndOverlay')) closeNewDeck(); });
-    $('edExportBtn').addEventListener('click', openExport);
-    $('edImportBtn').addEventListener('click', openImportEditor);
-    $('edPriceBtn').addEventListener('click', openPrices);
+    $('edIoBtn').addEventListener('click', (e) => toggleMenu('edIoBtn', 'edIoMenu', e));
+    $('edExportBtn').addEventListener('click', () => { closeMenus(); openExport(); });
+    $('edExportMissingBtn').addEventListener('click', () => { closeMenus(); openExportMissing(); });
+    $('edImportBtn').addEventListener('click', () => { closeMenus(); openImportEditor(); });
+    $('edPriceBtn').addEventListener('click', (e) => toggleMenu('edPriceBtn', 'edPriceMenu', e));
+    $('edCostDeckBtn').addEventListener('click', () => { closeMenus(); openPrices('deck'); });
+    $('edCostFinishBtn').addEventListener('click', () => { closeMenus(); openPrices('finish'); });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.deck-io-wrap')) closeMenus(); });
+    $('edBenchBtn').addEventListener('click', toggleBench);
+    $('edStatsBtn').addEventListener('click', openStats);
+    $('stClose').addEventListener('click', closeStats);
+    $('stOverlay').addEventListener('click', (e) => { if (e.target === $('stOverlay')) closeStats(); });
+    wireDropZones();
     $('pcClose').addEventListener('click', closePrices);
     $('pcOverlay').addEventListener('click', (e) => { if (e.target === $('pcOverlay')) closePrices(); });
     $('dlClose').addEventListener('click', closeDl);
@@ -80,7 +90,7 @@
     $('edAddBtn').addEventListener('click', openBrowser);
     $('cbClose').addEventListener('click', closeBrowser);
     $('cbOverlay').addEventListener('click', (e) => { if (e.target === $('cbOverlay')) closeBrowser(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeBrowser(); closeDl(); closeNewDeck(); closePrices(); } });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenus(); closeBrowser(); closeDl(); closeNewDeck(); closePrices(); closeStats(); } });
     ['cbType', 'cbCost', 'cbAbility', 'cbCounter'].forEach(id =>
       $(id).addEventListener('change', loadBrowser));
     $('cbName').addEventListener('input', debounce(loadBrowser, 250));
@@ -322,7 +332,11 @@
     // Clear the previous deck's cards up front so a slow load never flashes the
     // old deck while the new one is still fetching.
     deckCards = [];
+    bench = [];
     $('edDeckGrid').innerHTML = '';
+    $('edBenchGrid').innerHTML = '';
+    $('edBenchSection').style.display = 'none';
+    $('edBenchBtn').setAttribute('aria-expanded', 'false');
     const { data: d, error } = await window.sb.from('decks').select('*').eq('id', deckId).single();
     if (seq !== openSeq) return;             // a newer openDeck() superseded this one
     if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
@@ -379,6 +393,8 @@
     await loadOwnedElsewhere();
     if (seq !== openSeq) return;
     await reloadDeckCards();
+    if (seq !== openSeq) return;
+    await loadBench();
     subscribeDeckCardsRealtime();  // live co-edit for shared decks
   }
 
@@ -524,7 +540,7 @@
     const missing = deckCards.map(r => r.card_code).filter(c => !cardInfo[c]);
     if (missing.length) {
       const { data: cards } = await window.sb
-        .from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg')
+        .from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types')
         .eq('game', GAME).in('card_code', missing);
       (cards || []).forEach(c => { cardInfo[c.card_code] = c; });
     }
@@ -754,6 +770,8 @@
         oeEl.addEventListener('click', reconcile);
         oeEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') reconcile(e); });
       }
+      makeDragHandle(tile, 'deck', r.card_code);
+      wireDeckDropTarget(tile, r.card_code);
       grid.appendChild(tile);
     });
 
@@ -941,6 +959,277 @@
     }
   }
 
+  // ---------------- bench (local-only staging) + drag-and-drop ----------------
+  // The bench holds extra candidate cards that are NOT in the 50. It lives per
+  // deck in localStorage only, so server-side validity / wishlist sync /
+  // Cost-to-Finish (all keyed off the 50 in deck_cards) are untouched. Drag a
+  // bench card onto a deck card to swap, or onto the deck/bench to move across.
+  let bench = [];            // [{ code, qty }]
+  let dragSrc = null;        // { zone:'deck'|'bench', code } while dragging
+
+  function benchKey(id) { return `pawpaw:deckBench:${id}`; }
+  function saveBench() { try { localStorage.setItem(benchKey(deck.id), JSON.stringify(bench)); } catch (e) {} }
+  function readBenchLocal() {
+    try {
+      const a = JSON.parse(localStorage.getItem(benchKey(deck.id)) || '[]');
+      return Array.isArray(a) ? a.filter(x => x && x.code && x.qty > 0).map(x => ({ code: x.code, qty: x.qty })) : [];
+    } catch (e) { return []; }
+  }
+  async function loadBench() {
+    bench = readBenchLocal();
+    const need = bench.map(b => b.code).filter(c => !cardInfo[c]);
+    if (need.length) {
+      const { data } = await window.sb.from('cards')
+        .select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types')
+        .eq('game', GAME).in('card_code', need);
+      (data || []).forEach(c => { cardInfo[c.card_code] = c; });
+    }
+    renderBench();
+  }
+  function benchCount() { return bench.reduce((s, b) => s + b.qty, 0); }
+  function updateBenchBtn() { const btn = $('edBenchBtn'); if (btn) btn.textContent = `Bench (${benchCount()}) ▾`; }
+  function benchAdd(code, qty) {
+    const e = bench.find(x => x.code === code);
+    if (e) e.qty += qty; else bench.push({ code, qty });
+    saveBench(); renderBench();
+  }
+  function benchRemove(code) {
+    const i = bench.findIndex(x => x.code === code);
+    if (i >= 0) bench.splice(i, 1);
+    saveBench(); renderBench();
+  }
+  function toggleBench() {
+    const sec = $('edBenchSection');
+    const show = !sec.style.display || sec.style.display === 'none';
+    sec.style.display = show ? '' : 'none';
+    $('edBenchBtn').setAttribute('aria-expanded', show ? 'true' : 'false');
+  }
+
+  // Insert / raise / remove a deck card to an exact quantity, creating or
+  // deleting the deck_cards row as needed (new rows start owned=0). Optimistic +
+  // queued, like the other deck-card writers.
+  function setDeckQtyAbsolute(code, target) {
+    const cap = capFor(code);
+    if (cap !== null) target = Math.min(target, cap);
+    target = Math.max(0, target);
+    const existing = deckCards.find(r => r.card_code === code);
+    if (target <= 0) localRemoveRow(code);
+    else if (existing) localSetRow(code, { quantity: target, owned: Math.min(existing.owned, target) });
+    else { deckCards.push({ card_code: code, quantity: target, owned: 0 }); renderDeckLocal(); }
+    queueDeckWrite(async () => {
+      const cur = await readDeckCard(code);
+      if (target <= 0) {
+        if (cur) { const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code); if (error) throw error; }
+      } else if (cur) {
+        const { error } = await window.sb.from('deck_cards').update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', deck.id).eq('card_code', code);
+        if (error) throw error;
+      } else {
+        const { error } = await window.sb.from('deck_cards').insert({ deck_id: deck.id, card_code: code, quantity: target, owned: 0 });
+        if (error) throw error;
+      }
+    });
+  }
+
+  function moveDeckToBench(code) {
+    const row = deckCards.find(r => r.card_code === code);
+    if (!row) return;
+    $('edError').textContent = '';
+    benchAdd(code, row.quantity);
+    setDeckQtyAbsolute(code, 0);
+  }
+  function addBenchToDeck(code) {
+    const b = bench.find(x => x.code === code);
+    if (!b) return;
+    const cap = capFor(code);
+    const cur = (deckCards.find(r => r.card_code === code) || {}).quantity || 0;
+    let target = cur + b.qty;
+    if (cap !== null) target = Math.min(target, cap);
+    if (target <= cur) { $('edError').textContent = `Already at the max ${cap} cop${cap === 1 ? 'y' : 'ies'} of ${code}.`; return; }
+    benchRemove(code);
+    setDeckQtyAbsolute(code, target);
+  }
+  function swapBenchIntoDeck(deckCode, benchCode) {
+    if (deckCode === benchCode) return;
+    const a = deckCards.find(r => r.card_code === deckCode);
+    const b = bench.find(x => x.code === benchCode);
+    if (!a || !b) return;
+    $('edError').textContent = '';
+    const qa = a.quantity;
+    const capB = capFor(benchCode);
+    const curB = (deckCards.find(r => r.card_code === benchCode) || {}).quantity || 0;
+    let targetB = curB + qa;
+    if (capB !== null) targetB = Math.min(targetB, capB);
+    benchRemove(benchCode);
+    benchAdd(deckCode, qa);
+    setDeckQtyAbsolute(deckCode, 0);
+    setDeckQtyAbsolute(benchCode, targetB);
+  }
+
+  // Drag plumbing shared by deck + bench tiles. The card image is the drag
+  // handle (keeps the grab off the qty steppers); tiles/containers are targets.
+  function startDrag(e, zone, code, tile) {
+    dragSrc = { zone, code };
+    if (tile) tile.classList.add('dragging');
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', code); } catch (err) {}
+  }
+  function endDrag() {
+    dragSrc = null;
+    document.querySelectorAll('.deck-card-tile.dragging').forEach(t => t.classList.remove('dragging'));
+    document.querySelectorAll('.deck-card-tile.drop-target').forEach(t => t.classList.remove('drop-target'));
+  }
+  function makeDragHandle(tile, zone, code) {
+    const img = tile.querySelector('img');
+    if (!img) return;
+    img.draggable = true;
+    img.addEventListener('dragstart', e => startDrag(e, zone, code, tile));
+    img.addEventListener('dragend', endDrag);
+  }
+  function wireDeckDropTarget(tile, deckCode) {
+    tile.addEventListener('dragover', e => { if (dragSrc && dragSrc.zone === 'bench') { e.preventDefault(); tile.classList.add('drop-target'); } });
+    tile.addEventListener('dragleave', () => tile.classList.remove('drop-target'));
+    tile.addEventListener('drop', e => {
+      if (!dragSrc || dragSrc.zone !== 'bench') return;
+      e.preventDefault(); e.stopPropagation();
+      const bc = dragSrc.code;
+      tile.classList.remove('drop-target');
+      swapBenchIntoDeck(deckCode, bc);
+    });
+  }
+  // Container drops, wired once: bench card onto deck empty space → add to deck;
+  // deck card onto the bench → bench it.
+  function wireDropZones() {
+    const dg = $('edDeckGrid'), bg = $('edBenchGrid');
+    if (dg) {
+      dg.addEventListener('dragover', e => { if (dragSrc && dragSrc.zone === 'bench') e.preventDefault(); });
+      dg.addEventListener('drop', e => { if (dragSrc && dragSrc.zone === 'bench') { e.preventDefault(); addBenchToDeck(dragSrc.code); } });
+    }
+    if (bg) {
+      bg.addEventListener('dragover', e => { if (dragSrc && dragSrc.zone === 'deck') e.preventDefault(); });
+      bg.addEventListener('drop', e => { if (dragSrc && dragSrc.zone === 'deck') { e.preventDefault(); moveDeckToBench(dragSrc.code); } });
+    }
+  }
+
+  function renderBench() {
+    updateBenchBtn();
+    const grid = $('edBenchGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    if (!bench.length) {
+      grid.innerHTML = '<p class="deck-bench-empty">Drag a card here from your deck to bench it. Cards you add past 50 land here too.</p>';
+      return;
+    }
+    bench.slice().sort((x, y) => byCostThenCode({ card_code: x.code }, { card_code: y.code })).forEach(b => {
+      const c = cardInfo[b.code] || {};
+      const tile = document.createElement('div');
+      tile.className = 'deck-card-tile bench-tile';
+      tile.title = `${c.name || b.code} — benched ×${b.qty}`;
+      tile.innerHTML = `
+        <img src="${esc(c.image_url || '')}" alt="${esc(c.name || b.code)}">
+        <div class="card-acts">
+          <button class="card-act bench-up" aria-label="Move to deck" title="Move to deck">▲</button>
+          <button class="card-act bench-del" aria-label="Remove from bench" title="Remove from bench">✕</button>
+        </div>
+        <span class="qty-badge"><span class="qty-total">${b.qty > 4 ? 'X' : 'x' + b.qty}</span></span>`;
+      makeDragHandle(tile, 'bench', b.code);
+      tile.querySelector('.bench-up').addEventListener('click', e => { e.stopPropagation(); addBenchToDeck(b.code); });
+      tile.querySelector('.bench-del').addEventListener('click', e => { e.stopPropagation(); benchRemove(b.code); });
+      grid.appendChild(tile);
+    });
+  }
+
+  // ---------------- deck stats (over the 50; excludes leader + bench) ----------------
+  const SEARCH_RE = /look at the top (\d+) cards? of your deck/i;
+  function closeStats() { $('stOverlay').style.display = 'none'; }
+  // Hypergeometric: chance of ≥1 target in the top N of a D-card deck holding T
+  // targets. Computed as 1 − P(all N miss) to avoid big factorials.
+  function hitChance(D, T, N) {
+    N = Math.min(N, D);
+    if (T <= 0 || N <= 0) return 0;
+    if (D - T < N) return 1;
+    let pMiss = 1;
+    for (let i = 0; i < N; i++) pMiss *= (D - T - i) / (D - i);
+    return 1 - pMiss;
+  }
+  function openStats() {
+    $('stOverlay').style.display = '';
+    const body = $('stBody');
+    if (!deckCards.length) { body.innerHTML = '<p class="text-muted-line">No cards in the deck yet.</p>'; return; }
+
+    let c2000 = 0, c1000 = 0, cNone = 0, total = 0;
+    const costB = {};
+    deckCards.forEach(r => {
+      const c = cardInfo[r.card_code] || {};
+      total += r.quantity;
+      if (c.counter === 2000) c2000 += r.quantity;
+      else if (c.counter === 1000) c1000 += r.quantity;
+      else cNone += r.quantity;
+      if (c.cost != null) costB[c.cost] = (costB[c.cost] || 0) + r.quantity;
+    });
+
+    const ct = c2000 + c1000 + cNone || 1;
+    const counters = `
+      <div class="st-section">
+        <h4>Counters</h4>
+        <div class="st-counter-bar">
+          <span class="seg" style="width:${c2000 / ct * 100}%;background:#7ec96a"></span>
+          <span class="seg" style="width:${c1000 / ct * 100}%;background:#e8b757"></span>
+          <span class="seg" style="width:${cNone / ct * 100}%;background:#b0506a"></span>
+        </div>
+        <div class="st-legend">
+          <span><i style="background:#7ec96a"></i>+2000 × ${c2000}</span>
+          <span><i style="background:#e8b757"></i>+1000 × ${c1000}</span>
+          <span><i style="background:#b0506a"></i>No counter (bricks) × ${cNone}</span>
+        </div>
+      </div>`;
+
+    const costs = Object.keys(costB).map(Number);
+    const maxCost = costs.length ? Math.max(...costs) : 0;
+    const maxN = costs.length ? Math.max(...costs.map(k => costB[k])) : 0;
+    let bars = '';
+    for (let cc = 0; cc <= maxCost; cc++) {
+      const n = costB[cc] || 0;
+      const pct = maxN ? Math.round(n / maxN * 100) : 0;
+      bars += `<div class="st-bar-row"><span class="st-bar-label">${cc}</span><div class="st-bar-track"><div class="st-bar" style="width:${pct}%"></div></div><span class="st-bar-n">${n}</span></div>`;
+    }
+    const costCurve = `
+      <div class="st-section">
+        <h4>Play-cost curve</h4>
+        ${bars || '<p class="text-muted-line">No costed cards.</p>'}
+      </div>`;
+
+    const searchers = deckCards.filter(r => SEARCH_RE.test((cardInfo[r.card_code] || {}).effect_text || ''));
+    let searchHtml;
+    if (!searchers.length) {
+      searchHtml = '<p class="text-muted-line">No searchers detected.</p>';
+    } else {
+      const rows = searchers.map(r => {
+        const c = cardInfo[r.card_code] || {};
+        const m = (c.effect_text || '').match(SEARCH_RE);
+        const N = m ? parseInt(m[1], 10) : 5;
+        const tm = (c.effect_text || '').match(/\{([^}]+)\}/);
+        let T, label;
+        if (tm) {
+          const trait = tm[1];
+          label = `{${trait}}`;
+          T = deckCards.reduce((s, x) => { const ci = cardInfo[x.card_code] || {}; return s + (Array.isArray(ci.types) && ci.types.includes(trait) ? x.quantity : 0); }, 0);
+        } else {
+          label = 'Characters';
+          T = deckCards.reduce((s, x) => { const ci = cardInfo[x.card_code] || {}; return s + (ci.type === 'CHARACTER' ? x.quantity : 0); }, 0);
+        }
+        const pct = Math.round(hitChance(total, T, N) * 100);
+        return `<tr><td>${esc(c.name || r.card_code)} <span class="pc-code">×${r.quantity}</span></td><td class="num">top ${N}</td><td class="num">${T} <span class="pc-code">${esc(label)}</span></td><td class="num">${pct}%</td></tr>`;
+      }).join('');
+      searchHtml = `<table class="st-search"><thead><tr><th>Searcher</th><th class="num">Depth</th><th class="num">Targets</th><th class="num">Hit %</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    const searchSection = `
+      <div class="st-section">
+        <h4>Searchers <span class="text-muted-line" style="font-weight:400;text-transform:none;letter-spacing:0;">— estimated chance to hit a target in the top N</span></h4>
+        ${searchHtml}
+      </div>`;
+
+    body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + costCurve + searchSection;
+  }
+
   // ---------------- Add Cards overlay browser ----------------
   // Full-screen scrollable overlay over the editor; binder-style filters
   // minus Color (the leader locks it). Pool is leader-color matched, bans
@@ -1035,7 +1324,7 @@
       .map(c => `color.ilike.%${c}%`).join(',');
     let q = window.sb
       .from('cards')
-      .select('card_code,name,color,cost,type,image_url,image_url_lg')
+      .select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types')
       .eq('game', GAME).neq('type', 'LEADER')
       .order('release_order', { ascending: false })
       .range(cbFrom, cbFrom + CB_FETCH - 1);
@@ -1127,6 +1416,12 @@
     $('edError').textContent = '';
     $('cbError').textContent = '';
     cardInfo[card.card_code] = card;
+    const deckTotal = deckCards.reduce((s, r) => s + r.quantity, 0);
+    if (deckTotal >= 50) { // deck is full — overflow lands on the bench
+      benchAdd(card.card_code, 1);
+      $('cbError').textContent = `Deck is at 50 — ${card.card_code} added to the bench.`;
+      return;
+    }
     const owned = $('cbOwned').checked; // count the added copy as owned
     const existing = deckCards.find(r => r.card_code === card.card_code);
     const cap = capFor(card.card_code); // null = unlimited
@@ -1301,7 +1596,7 @@
     const out = {};
     for (let i = 0; i < codes.length; i += 100) {
       const { data } = await window.sb
-        .from('cards').select('card_code,name,color,cost,type,image_url')
+        .from('cards').select('card_code,name,color,cost,type,image_url,counter,effect_text,types')
         .eq('game', GAME).in('card_code', codes.slice(i, i + 100));
       (data || []).forEach(c => { out[c.card_code] = c; });
     }
@@ -1309,6 +1604,20 @@
   }
 
   function closeDl() { $('dlOverlay').style.display = 'none'; }
+
+  function closeMenus() {
+    document.querySelectorAll('.deck-io-menu.open').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.deck-io-wrap > .btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  }
+  function toggleMenu(btnId, menuId, e) {
+    e.stopPropagation(); // don't let the document handler immediately re-close it
+    const willOpen = !$(menuId).classList.contains('open');
+    closeMenus(); // only one menu open at a time
+    if (willOpen) {
+      $(menuId).classList.add('open');
+      $(btnId).setAttribute('aria-expanded', 'true');
+    }
+  }
 
   function openExport() {
     dlMode = 'export';
@@ -1320,6 +1629,25 @@
     $('dlText').readOnly = true;
     $('dlAction').textContent = 'Copy';
     $('dlOwnedWrap').style.display = 'none'; // export has no owned toggle
+    $('dlOverlay').style.display = '';
+  }
+
+  function openExportMissing() {
+    dlMode = 'export';
+    $('dlTitle').textContent = 'Export Missing Cards';
+    $('dlError').textContent = '';
+    // Just the copies you still need (quantity − owned); leader excluded (you own it).
+    const missing = deckCards.filter(r => r.quantity - r.owned > 0).sort(byCostThenCode);
+    if (!missing.length) {
+      $('dlHint').textContent = 'Nothing missing — every card in this deck is owned. 🎉';
+      $('dlText').value = '';
+    } else {
+      $('dlHint').textContent = 'The cards you still need (the quantity you’re short). Copy to share or shop.';
+      $('dlText').value = missing.map(r => `${r.quantity - r.owned}x${r.card_code}`).join('\n');
+    }
+    $('dlText').readOnly = true;
+    $('dlAction').textContent = 'Copy';
+    $('dlOwnedWrap').style.display = 'none';
     $('dlOverlay').style.display = '';
   }
 
@@ -1395,22 +1723,28 @@
 
   function closePrices() { $('pcOverlay').style.display = 'none'; }
 
-  async function openPrices() {
+  async function openPrices(mode) {
+    const isDeck = mode === 'deck';
+    $('pcTitle').textContent = isDeck ? 'Cost of Deck' : 'Cost to Finish';
+    $('pcSub').textContent = isDeck
+      ? 'The whole deck — leader plus every card at full quantity — at each card’s cheapest single price.'
+      : 'The cards you still need (deck quantity minus what you own), at each card’s cheapest single price.';
     $('pcOverlay').style.display = '';
     $('pcTotal').textContent = '';
     $('pcFoot').textContent = '';
     $('pcBody').innerHTML = '<p class="text-muted-line">Pricing…</p>';
 
-    const missing = deckCards
-      .map(r => ({ code: r.card_code, need: r.quantity - r.owned }))
-      .filter(x => x.need > 0);
-    if (!missing.length) {
+    // Deck = leader + every card at full quantity; Finish = only the copies you're short.
+    const items = isDeck
+      ? [{ code: deck.leader_card_code, need: 1 }, ...deckCards.map(r => ({ code: r.card_code, need: r.quantity }))]
+      : deckCards.map(r => ({ code: r.card_code, need: r.quantity - r.owned })).filter(x => x.need > 0);
+    if (!items.length) {
       $('pcBody').innerHTML = '<p class="text-muted-line">Nothing missing — every card in this deck is owned. 🎉</p>';
       return;
     }
 
-    // Pull fresh prices for just the missing codes (deck-sized, so cheap).
-    const codes = missing.map(x => x.code);
+    // Pull fresh prices for just these codes (deck-sized, so cheap).
+    const codes = items.map(x => x.code);
     const priceMap = {};
     let queryErr = null;
     for (let i = 0; i < codes.length; i += 100) {
@@ -1428,7 +1762,7 @@
     }
 
     let total = 0, unpriced = 0, lastUpdated = null;
-    const rows = missing.map(x => {
+    const rows = items.map(x => {
       const c = priceMap[x.code] || {};
       const info = cardInfo[x.code] || {};
       const price = (c.price_usd != null) ? Number(c.price_usd) : null;
@@ -1440,9 +1774,10 @@
     }).sort((a, b) => (b.line ?? -1) - (a.line ?? -1)); // dearest first (cost drivers on top)
 
     const fmt = (n) => '$' + n.toFixed(2);
+    const qtyLabel = isDeck ? 'Qty' : 'Need';
     $('pcBody').innerHTML = `
       <table class="pc-table">
-        <thead><tr><th>Card</th><th class="num">Need</th><th class="num">Each</th><th class="num">Line</th></tr></thead>
+        <thead><tr><th>Card</th><th class="num">${qtyLabel}</th><th class="num">Each</th><th class="num">Line</th></tr></thead>
         <tbody>
           ${rows.map(r => `
             <tr${r.price == null ? ' class="pc-unpriced"' : ''}>
