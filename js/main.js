@@ -83,14 +83,15 @@ document.querySelectorAll('.feature-card, .gallery-item, .chapter-item, .shop-ca
 
 
 // ---- Auth button (Profile dropdown / Sign In) ----
-// Both states ship in the HTML, hidden/shown via the html.is-signed-in class.
-// The inline head script sets that class from the cached Supabase session for
-// flicker-free first paint. We deliberately do NOT re-sync the class against
-// the server-verified state here — that would cause a visible swap on every
-// page load when the cache is briefly out of sync (e.g., session revoked
-// elsewhere). Real auth transitions on this page are picked up by the
-// onAuthStateChange listener below. The getUser() call is kept so the SDK
-// can refresh the access token in the background.
+// Both states ship in the HTML, shown/hidden via the html.is-signed-in class.
+// The inline head script sets that class from the cached Supabase session for a
+// flicker-free first paint. Here we reconcile it against the SDK's verified
+// session: the notification bell below is built from this same currentUser()
+// check, so trusting only the cache lets the nav show the "Sign In" button next
+// to a live bell (a signed-in user whose is-signed-in cache was missing/stale),
+// or a Profile menu after the session was revoked elsewhere. Reconciling keeps
+// the button, the bell, and the real session in agreement; a one-frame
+// correction when the cache was stale beats a self-contradictory nav.
 
 async function renderAuthButton() {
   const mobileLink = document.getElementById('mobileAuthLink');
@@ -98,6 +99,8 @@ async function renderAuthButton() {
 
   let user = null;
   try { user = await window.PK.currentUser(); } catch (e) {}
+
+  document.documentElement.classList.toggle('is-signed-in', !!user);
 
   if (mobileLink) {
     mobileLink.textContent = user ? 'Account' : 'Sign In';
