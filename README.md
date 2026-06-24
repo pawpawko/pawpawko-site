@@ -1,6 +1,6 @@
 # Pawpaw Ko
 
-A community-first pop-up gaming company and website for the NYC trading card community. **Pawpaw Ko** hosts public **binders** — collections of cards each user wants to trade, sell, give away, or buy — filtered by NYC boroughs, major subway stops, and local card shops so meet-ups are easy.
+A community-first pop-up gaming company and website for the trading card community. **Pawpaw Ko** hosts public **binders** — collections of cards each user wants to trade, sell, give away, or buy — filtered by boroughs, major subway stops, and local card shops so meet-ups are easy.
 
 Live at **[pawpawko.com](https://pawpawko.com)**.
 
