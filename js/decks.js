@@ -351,7 +351,9 @@
     if (push) history.pushState(null, '', url);
     else history.replaceState(null, '', url);
     const { data: L } = await window.sb
-      .from('cards').select('card_code,name,color,image_url,image_url_lg')
+      // types + attribute are needed to evaluate gated-searcher conditions
+      // ("If your Leader has the {X} type / <Y> attribute") in the stats panel.
+      .from('cards').select('card_code,name,color,image_url,image_url_lg,types,attribute')
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
     if (seq !== openSeq) return;             // superseded while fetching the leader
     leaderCard = L;
@@ -621,13 +623,19 @@
           </div>
         </div>`;
     }
-    // Owned-only editor for a benched card — lets you mark benched copies as
-    // owned, which surfaces the "send to trade binder" action on the bench tile.
+    // Editor for a benched card — edit how many copies are benched (Qty) and how
+    // many of those you own (Owned, surfaces the "send to trade binder" action).
     function benchEditHTML(b) {
       const owned = b.owned || 0;
       return `
-        <div class="cz-name">${esc(b.code)} — benched ×${b.qty}</div>
+        <div class="cz-name">${esc(b.code)} — benched</div>
         <div class="cz-steppers">
+          <div>
+            <span class="stepper-label">Qty</span>
+            <div class="stepper" data-kind="qty">
+              <button data-d="-1">−</button><input class="cz-val" type="number" inputmode="numeric" data-kind="qty" value="${b.qty}" min="0"><button data-d="1">+</button>
+            </div>
+          </div>
           <div>
             <span class="stepper-label">Owned</span>
             <div class="stepper ${owned >= b.qty ? 'owned-full' : ''}" data-kind="owned">
@@ -645,6 +653,17 @@
       saveBench(); renderBench();
       renderEdit(); // refresh stepper state (disabled buttons / owned-full)
     }
+    function setBenchQty(c, value) {
+      const b = bench.find(x => x.code === c);
+      if (!b) return;
+      const v = Math.max(0, isNaN(value) ? b.qty : value);
+      if (v === b.qty) return;
+      if (v === 0) { benchRemove(c); hide(); return; } // emptied → drop it + close
+      b.qty = v;
+      if (b.owned > v) b.owned = v; // owned can't exceed quantity
+      saveBench(); renderBench();
+      renderEdit(); // re-render so Owned's max + the ×qty reflect the new total
+    }
     function renderEdit() {
       const box = ov.querySelector('.cz-edit');
       if (zone === 'bench') {
@@ -655,12 +674,20 @@
         box.querySelectorAll('.stepper button').forEach(btn => {
           btn.addEventListener('click', e => {
             e.stopPropagation();
-            const cur = (bench.find(x => x.code === b.code) || {}).owned || 0;
-            setBenchOwned(b.code, cur + parseInt(btn.dataset.d, 10));
+            const kind = btn.closest('.stepper').dataset.kind;
+            const d = parseInt(btn.dataset.d, 10);
+            const cur = bench.find(x => x.code === b.code) || {};
+            if (kind === 'qty') setBenchQty(b.code, (cur.qty || 0) + d);
+            else setBenchOwned(b.code, (cur.owned || 0) + d);
           });
         });
         box.querySelectorAll('.cz-val').forEach(inp => {
-          inp.addEventListener('change', () => setBenchOwned(b.code, parseInt(inp.value, 10)));
+          const apply = () => {
+            const v = parseInt(inp.value, 10);
+            if (inp.dataset.kind === 'qty') setBenchQty(b.code, v);
+            else setBenchOwned(b.code, v);
+          };
+          inp.addEventListener('change', apply);
           inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
         });
         return;
@@ -1111,7 +1138,7 @@
     if (btn) {
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       btn.title = on ? 'Dock bench below' : 'Dock bench to the side';
-      btn.textContent = on ? '⤓' : '⤢';
+      // Icon (dock-right vs dock-bottom) + pressed styling are CSS-driven off aria-pressed.
     }
     if (on && $('edBenchSection').style.display === 'none') toggleBench();
   }
@@ -1320,7 +1347,107 @@
   }
 
   // ---------------- deck stats (over the 50; excludes leader + bench) ----------------
-  const SEARCH_RE = /look at the top (\d+) cards? of your deck/i;
+  // Searcher detection — faithful port of scripts/search_meta.py (the canonical
+  // parser). Lives here because the editor already has each card's effect_text
+  // client-side; once cards.search_meta is populated server-side, prefer reading
+  // that and delete this. Real OPTCG wording is "look at N cards FROM THE TOP of
+  // your deck … reveal up to 1 <filter> … add it to your hand" — the old
+  // /look at the top N cards of your deck/ matched zero cards.
+  const SEARCH_COLORS = ['red', 'green', 'blue', 'purple', 'black', 'yellow'];
+  const SEARCH_CLAUSE_RE = /look at (?:up to )?(\d+) cards? from the top of your deck[;:,. ]*reveal\s+(.*?)\s*[,;]?\s*(?:and\s+)?add\s+(?:it|them|up to \d+[^.]*?)\s+to your hand/i;
+  function parseSearcherSub(s) {
+    s = s.replace(/\s+/g, ' ').trim();
+    const f = {};
+    const excl = [...s.matchAll(/other than \[([^\]]+)\]/gi)].map(x => x[1]);
+    const rest = s.replace(/other than \[[^\]]+\]/gi, ' ');
+    const names = [...rest.matchAll(/\[([^\]]+)\]/g)].map(x => x[1]);
+    const traits = [...s.matchAll(/\{([^}]+)\}/g)].map(x => x[1])
+      .concat([...s.matchAll(/type including "([^"]+)"/gi)].map(x => x[1]));
+    const colors = [...new Set([...s.matchAll(new RegExp('\\b(' + SEARCH_COLORS.join('|') + ')\\b', 'gi'))].map(x => x[1].toLowerCase()))];
+    const masked = s.replace(/\{[^}]*\}|\[[^\]]*\]/g, ' '); // don't read trait/name words as the category
+    let category = null;
+    for (const [w, code] of [['Character', 'CHARACTER'], ['Event', 'EVENT'], ['Stage', 'STAGE'], ['Leader', 'LEADER']]) {
+      if (new RegExp('\\b' + w + '\\b', 'i').test(masked)) { category = code; break; }
+    }
+    let cost = null, mm;
+    if ((mm = s.match(/cost of (\d+) to (\d+)/i))) cost = { op: 'range', min: +mm[1], max: +mm[2] };
+    else if ((mm = s.match(/cost of (\d+) or more/i))) cost = { op: '>=', val: +mm[1] };
+    else if ((mm = s.match(/cost of (\d+) or less/i))) cost = { op: '<=', val: +mm[1] };
+    else if ((mm = s.match(/cost of (\d+)\b/i))) cost = { op: '==', val: +mm[1] };
+    if (category) f.category = category;
+    if (traits.length) f.traits = traits;
+    if (colors.length) f.colors = colors;
+    if (names.length) f.names = names;
+    if (excl.length) f.exclude = excl;
+    if (cost) f.cost = cost;
+    return f;
+  }
+  // -> { look, take, filters:[ {category,traits,colors,names,exclude,cost} ], gated } | null.
+  // Within a filter, names/traits/colors are OR-matched; category/cost AND'd;
+  // multiple filters are OR'd (the "… or up to 1 …" form).
+  function parseSearcher(effect) {
+    if (!effect) return null;
+    const eff = effect.replace(/\s+/g, ' ').trim();
+    const m = eff.match(SEARCH_CLAUSE_RE);
+    if (!m) return null;
+    const look = parseInt(m[1], 10);
+    const body = m[2];
+    const takeM = body.match(/up to (\d+)/i);
+    const take = takeM ? parseInt(takeM[1], 10) : 1;
+    const core = body.replace(/^\s*up to \d+\s+/i, '');
+    const filters = core.split(/\s+or up to \d+\s+/i).map(parseSearcherSub);
+    // Capture the gating condition ("If your Leader … , look at …") so the
+    // stats panel can test it against the deck's actual leader.
+    const gateM = eff.match(/\bif ((?:your|you)\b.*?)(?=,?\s*look at (?:up to )?\d+ cards? from the top)/i);
+    const gate = gateM ? gateM[1].trim() : null;
+    return { look, take, filters, gated: !!gate, gate };
+  }
+  // Evaluate a searcher's gate against the deck's leader. Returns one of:
+  //   always | fires (leader satisfies it) | dead (leader can't) | situational
+  //   (board-state we can't know from the list). `why` is a short label.
+  function evalSearcherGate(gate, L) {
+    if (!gate) return { status: 'always' };
+    let m;
+    if ((m = gate.match(/leader is \[([^\]]+)\]/i)))
+      return { status: L && L.name === m[1] ? 'fires' : 'dead', why: `Leader = ${m[1]}` };
+    if ((m = gate.match(/leader has the \{([^}]+)\} type/i)))
+      return { status: L && Array.isArray(L.types) && L.types.includes(m[1]) ? 'fires' : 'dead', why: `Leader is {${m[1]}}` };
+    if ((m = gate.match(/leader has the <([^>]+)> attribute/i)))
+      return { status: L && (L.attribute || '').toLowerCase() === m[1].toLowerCase() ? 'fires' : 'dead', why: `Leader is <${m[1]}>` };
+    if (/leader is multicolored/i.test(gate))
+      return { status: L && /\//.test(L.color || '') ? 'fires' : 'dead', why: 'multicolored Leader' };
+    if ((m = gate.match(/leader is (red|green|blue|purple|black|yellow)\b/i)))
+      return { status: L && (L.color || '').toLowerCase().includes(m[1].toLowerCase()) ? 'fires' : 'dead', why: `${m[1]} Leader` };
+    return { status: 'situational', why: gate };
+  }
+  function cardMatchesSub(ci, f) {
+    const id = [];
+    if (f.names) id.push(f.names.includes(ci.name));
+    if (f.traits) id.push(Array.isArray(ci.types) && ci.types.some(t => f.traits.includes(t)));
+    if (f.colors) { const cc = (ci.color || '').toLowerCase(); id.push(f.colors.some(col => cc.includes(col))); }
+    if (id.length && !id.some(Boolean)) return false;       // identity constraints are OR'd
+    if (f.category && ci.type !== f.category) return false;
+    if (f.cost) {
+      const v = ci.cost; if (v == null) return false;
+      if (f.cost.op === 'range' && (v < f.cost.min || v > f.cost.max)) return false;
+      if (f.cost.op === '>=' && !(v >= f.cost.val)) return false;
+      if (f.cost.op === '<=' && !(v <= f.cost.val)) return false;
+      if (f.cost.op === '==' && v !== f.cost.val) return false;
+    }
+    if (f.exclude && f.exclude.includes(ci.name)) return false;
+    return true;
+  }
+  function searcherTargetLabel(filters) {
+    return filters.map(f => {
+      const p = [];
+      if (f.names) p.push(f.names.map(n => '[' + n + ']').join('/'));
+      if (f.traits) p.push(f.traits.map(t => '{' + t + '}').join('/'));
+      if (f.colors) p.push(f.colors.join('/'));
+      if (f.category) p.push(f.category[0] + f.category.slice(1).toLowerCase());
+      if (f.cost) p.push('cost ' + (f.cost.op === 'range' ? `${f.cost.min}-${f.cost.max}` : f.cost.op === '==' ? f.cost.val : f.cost.op + f.cost.val));
+      return p.join(' ') || 'any card';
+    }).join(' or ');
+  }
   function closeStats() { $('stOverlay').style.display = 'none'; }
   // Hypergeometric: chance of ≥1 target in the top N of a D-card deck holding T
   // targets. Computed as 1 − P(all N miss) to avoid big factorials.
@@ -1379,37 +1506,83 @@
         ${bars || '<p class="text-muted-line">No costed cards.</p>'}
       </div>`;
 
-    const searchers = deckCards.filter(r => SEARCH_RE.test((cardInfo[r.card_code] || {}).effect_text || ''));
+    const searcherRows = deckCards
+      .map(r => ({ r, meta: parseSearcher((cardInfo[r.card_code] || {}).effect_text) }))
+      .filter(x => x.meta)
+      .map(({ r, meta }) => {
+        const c = cardInfo[r.card_code] || {};
+        // Cards this searcher can reveal (excl. its own copies — that one's gone).
+        const hits = deckCards
+          .filter(x => x.card_code !== r.card_code && meta.filters.some(f => cardMatchesSub(cardInfo[x.card_code] || {}, f)))
+          .map(x => ({ name: (cardInfo[x.card_code] || {}).name || x.card_code, qty: x.quantity }))
+          .sort((a, b) => b.qty - a.qty);
+        const T = hits.reduce((s, h) => s + h.qty, 0);
+        const fresh = hitChance(total, T, meta.look); // top-of-fresh-deck
+        // Draw-accurate: a cost-C searcher resolves ~turn C, by when you've seen
+        // ~5 (opening hand) + C cards; dig the remaining deck for the targets
+        // expected to still be in it.
+        const seen = Math.min(total - meta.look, 5 + (c.cost || 0));
+        const Dleft = Math.max(meta.look, total - seen);
+        const live = hitChance(Dleft, T * Dleft / total, meta.look);
+        const gate = evalSearcherGate(meta.gate, leaderCard);
+        return { r, c, meta, T, hits, fresh, live, gate };
+      })
+      .sort((a, b) => {
+        const ad = a.gate.status === 'dead' ? 1 : 0, bd = b.gate.status === 'dead' ? 1 : 0;
+        return ad - bd || b.live - a.live; // dead gates last, else most reliable first
+      });
+
+    const searcherCopies = searcherRows.reduce((s, x) => s + x.r.quantity, 0);
+    const openRaw = searcherRows.length ? hitChance(total, searcherCopies, 5) : 0; // ≥1 in a single 5-card hand
+    // OPTCG gives a free mulligan (redraw all 5 once), so you get two shots at it.
+    const openAccess = searcherRows.length ? 1 - (1 - openRaw) * (1 - openRaw) : 0;
+
     let searchHtml;
-    if (!searchers.length) {
+    if (!searcherRows.length) {
       searchHtml = '<p class="text-muted-line">No searchers detected.</p>';
     } else {
-      const rows = searchers.map(r => {
-        const c = cardInfo[r.card_code] || {};
-        const m = (c.effect_text || '').match(SEARCH_RE);
-        const N = m ? parseInt(m[1], 10) : 5;
-        const tm = (c.effect_text || '').match(/\{([^}]+)\}/);
-        let T, label;
-        if (tm) {
-          const trait = tm[1];
-          label = `{${trait}}`;
-          T = deckCards.reduce((s, x) => { const ci = cardInfo[x.card_code] || {}; return s + (Array.isArray(ci.types) && ci.types.includes(trait) ? x.quantity : 0); }, 0);
-        } else {
-          label = 'Characters';
-          T = deckCards.reduce((s, x) => { const ci = cardInfo[x.card_code] || {}; return s + (ci.type === 'CHARACTER' ? x.quantity : 0); }, 0);
-        }
-        const pct = Math.round(hitChance(total, T, N) * 100);
-        return `<tr><td>${esc(c.name || r.card_code)} <span class="pc-code">×${r.quantity}</span></td><td class="num">top ${N}</td><td class="num">${T} <span class="pc-code">${esc(label)}</span></td><td class="num">${pct}%</td></tr>`;
+      const hitColor = p => (p >= 75 ? '#7ec96a' : p >= 50 ? '#e8b757' : '#b0506a');
+      const rows = searcherRows.map(({ r, c, meta, T, hits, fresh, live, gate }, i) => {
+        const dead = gate.status === 'dead', situ = gate.status === 'situational';
+        const pct = Math.round(live * 100);
+        const upto = meta.take > 1 ? ` <span class="pc-code">+up to ${meta.take}</span>` : '';
+        const label = searcherTargetLabel(meta.filters);
+        let flag = '';
+        if (dead) flag = ` <span class="pc-code" style="color:#b0506a" title="This deck's leader doesn't satisfy: ${esc(gate.why || '')}">✗ won't fire</span>`;
+        else if (situ) flag = ` <span class="pc-code" style="color:#e8b757" title="Situational — only when met: ${esc(gate.why || '')}">if active</span>`;
+        else if (gate.status === 'fires') flag = ` <span class="pc-code" style="color:#7ec96a" title="Your leader satisfies: ${esc(gate.why || '')}">✓ fires</span>`;
+        const hitCell = dead
+          ? `<td class="num" style="color:#7a7280" title="Gate not met — never searches in this deck">—</td>`
+          : `<td class="num" style="color:${hitColor(pct)};font-weight:700" title="${situ ? 'when its condition is met · ' : ''}fresh-deck ${Math.round(fresh * 100)}% · modeled around turn ${c.cost || 0}">${pct}%${situ ? '*' : ''}</td>`;
+        const detail = hits.length
+          ? hits.map(h => `${esc(h.name)} <span class="pc-code">×${h.qty}</span>`).join(' · ')
+          : 'No matching cards in this deck.';
+        return `<tr class="st-srow" style="cursor:pointer"><td><span class="st-care">▸</span> ${esc(c.name || r.card_code)} <span class="pc-code">×${r.quantity}</span>${flag}</td><td class="num">top ${meta.look}${upto}</td><td class="num">${T} <span class="pc-code">${esc(label)}</span></td>${hitCell}</tr>` +
+          `<tr class="st-sdetail" hidden><td colspan="4" style="padding:.2rem .6rem .7rem 1.6rem;color:var(--text-muted,#988e85);font-size:.82rem">Can hit: ${detail}</td></tr>`;
       }).join('');
-      searchHtml = `<table class="st-search"><thead><tr><th>Searcher</th><th class="num">Depth</th><th class="num">Targets</th><th class="num">Hit %</th></tr></thead><tbody>${rows}</tbody></table>`;
+      searchHtml =
+        `<p class="text-muted-line">${searcherRows.length} searcher${searcherRows.length === 1 ? '' : 's'} · ${searcherCopies} cop${searcherCopies === 1 ? 'y' : 'ies'} · <span title="single 5-card hand: ${Math.round(openRaw * 100)}%; a free mulligan gives a 2nd shot">~${Math.round(openAccess * 100)}% to open one in your first 5 (with mulligan)</span>. <span class="pc-code">tap a row for targets</span></p>` +
+        `<table class="st-search"><thead><tr><th>Searcher</th><th class="num">Depth</th><th class="num">Targets</th><th class="num">Hit %</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
     const searchSection = `
       <div class="st-section">
-        <h4>Searchers <span class="text-muted-line" style="font-weight:400;text-transform:none;letter-spacing:0;">— estimated chance to hit a target in the top N</span></h4>
+        <h4>Searchers <span class="text-muted-line" style="font-weight:400;text-transform:none;letter-spacing:0;">— chance to hit a target, modeled at the turn you'd play it</span></h4>
         ${searchHtml}
       </div>`;
 
     body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + costCurve + searchSection;
+
+    // Expand/collapse each searcher's target breakdown.
+    body.querySelectorAll('.st-srow').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const d = tr.nextElementSibling;
+        if (d && d.classList.contains('st-sdetail')) {
+          d.hidden = !d.hidden;
+          const car = tr.querySelector('.st-care');
+          if (car) car.textContent = d.hidden ? '▸' : '▾';
+        }
+      });
+    });
   }
 
   // ---------------- Add Cards overlay browser ----------------
@@ -1567,6 +1740,36 @@
     renderBrowser();
   }
 
+  // A card is "leader-locked" for this deck if its effect carries an "If your
+  // Leader …" condition the deck's leader can't meet (so it's dead / partly dead
+  // here). It's still LEGAL to run, so Add Cards only greys it. Conservative:
+  // locked only when the leader matches NONE of the card's leader conditions, so
+  // a card with one satisfied condition isn't greyed.
+  function evalLeaderClause(clause, L) {
+    let m;
+    if (/leader is \[/i.test(clause)) {
+      const names = [...clause.matchAll(/\[([^\]]+)\]/g)].map(x => x[1]); // "[A] or [B]"
+      return names.includes(L.name) ? 'met' : 'unmet';
+    }
+    if ((m = clause.match(/leader has the \{([^}]+)\} type/i)))
+      return Array.isArray(L.types) && L.types.includes(m[1]) ? 'met' : 'unmet';
+    if ((m = clause.match(/leader has the <([^>]+)> attribute/i)))
+      return (L.attribute || '').toLowerCase() === m[1].toLowerCase() ? 'met' : 'unmet';
+    if (/leader is multicolored/i.test(clause))
+      return /\//.test(L.color || '') ? 'met' : 'unmet';
+    if ((m = clause.match(/leader is (red|green|blue|purple|black|yellow)\b/i)))
+      return (L.color || '').toLowerCase().includes(m[1].toLowerCase()) ? 'met' : 'unmet';
+    return 'unknown'; // some other leader reference we can't judge → don't grey
+  }
+  function leaderLocked(effect, L) {
+    if (!effect || !L) return false;
+    const clauses = effect.replace(/\s+/g, ' ').match(/if your leader\b[^.,;:]*/gi);
+    if (!clauses) return false;
+    let met = false, unmet = false;
+    clauses.forEach(cl => { const r = evalLeaderClause(cl, L); if (r === 'met') met = true; else if (r === 'unmet') unmet = true; });
+    return unmet && !met;
+  }
+
   function renderBrowser() {
     const grid = $('cbGrid');
     grid.innerHTML = '';
@@ -1576,12 +1779,14 @@
       : 'No legal cards match.';
     cbRows.slice(0, cbShown).forEach(c => {
       const inDeck = deckCards.find(r => r.card_code === c.card_code);
+      const locked = leaderLocked(c.effect_text, leaderCard);
       const tile = document.createElement('button');
-      tile.className = 'cb-tile';
+      tile.className = 'cb-tile' + (locked ? ' cb-locked' : '');
+      if (locked) tile.title = "Leader-locked — this card's effect needs a different leader. Still legal to add.";
       tile.innerHTML = `
         <div class="cb-tile-img">${c.image_url
           ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(c.image_url)}" alt="${esc(c.name || c.card_code)}">`
-          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}${c.image_url ? `<div class="card-acts">${zoomBtnHTML()}</div>` : ''}</div>
+          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}${locked ? '<span class="cb-lock-badge">leader-locked</span>' : ''}${c.image_url ? `<div class="card-acts">${zoomBtnHTML()}</div>` : ''}</div>
         <div class="cb-tile-name">${esc(c.name || '')}${inDeck ? ` <span class="cb-in-deck">x${inDeck.quantity}</span>` : ''}</div>
         <div class="cb-tile-code">${esc(c.card_code)}</div>`;
       tile.addEventListener('click', () => addCard(c));
