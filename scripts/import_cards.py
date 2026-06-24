@@ -31,6 +31,12 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from PIL import Image
 
+# Searcher predicate extraction (cards.search_meta) — same dir, on sys.path[0]
+# when run as `python scripts/import_cards.py`.
+from search_meta import load_overrides, search_meta_for
+# Deck-rule reconciliation (detect & report) — runs at the end of an import.
+import rules_check
+
 try:
     sys.stdout.reconfigure(line_buffering=True)
 except Exception:
@@ -133,6 +139,21 @@ SB = {
     "apikey": SERVICE_KEY,
     "Authorization": f"Bearer {SERVICE_KEY}",
 }
+
+# Searcher predicate (cards.search_meta). Overrides loaded once; the column is
+# probed at startup so an import before search_meta_migration.sql is applied
+# degrades gracefully (skips search_meta) instead of failing every upsert.
+_OVERRIDES = load_overrides()
+INCLUDE_SEARCH_META = True
+INCLUDE_BLOCK = True  # cards.block_number present? (apply block_number_migration.sql)
+
+
+def cards_has_column(col: str) -> bool:
+    r = sb_session.get(
+        f"{SUPABASE_URL}/rest/v1/cards", headers=SB,
+        params={"select": col, "limit": 1}, timeout=30,
+    )
+    return r.status_code == 200
 
 RELEASE_ORDER = {
     'OP16':31,'ST30':31,
@@ -258,6 +279,26 @@ def parse_cards(html: str) -> list[dict]:
         if getinfo_el:
             series_label = re.sub(r"^Card Set\(s\)", "", getinfo_el.get_text(" ", strip=True)).strip() or None
 
+        # Printed Block Icon (1-5 or 'X'). Rendered in .block as a heading
+        # ("Block icon") followed by the value; older promos have no block.
+        # NOTE: this is the ORIGINAL block cohort, NOT the current rotation
+        # block (e.g. OP05-003 prints 1 but is Standard-legal Block 2), so it
+        # is REFERENCE DATA ONLY — never used to derive legality. Rotation is
+        # set-based + manual exemptions; see scripts/rules_check.py.
+        block_number = None
+        block_el = dl.select_one(".block")
+        # The per-card block is a <div class="block"><h3>Block icon</h3>N</div>;
+        # only parse if the "Block icon" label is present (guards against an
+        # unrelated .block element), then take the trailing value.
+        if block_el and "block" in block_el.get_text(" ", strip=True).lower():
+            btxt = re.sub(r"(?i)block\s*icon", "", block_el.get_text(" ", strip=True)).strip()
+            bm = re.search(r"\b([0-9]+|X)\b", btxt)
+            if not bm:  # fallback: some views render an <img class="block_icon_N">
+                icon = block_el.select_one('[class*="block_icon_"]')
+                if icon:
+                    bm = re.search(r"block_icon_([0-9]+|X)", " ".join(icon.get("class", [])))
+            block_number = bm.group(1) if bm else None
+
         # Hotlink straight to the official site's CDN — no upload, no storage cost.
         img = dl.select_one("img.lazy") or dl.select_one("img")
         image_url = None
@@ -284,10 +325,14 @@ def parse_cards(html: str) -> list[dict]:
             "image_url_lg": None,
             "_src_url": image_url,
             "release_order": release_order_for(code),
+            "block_number": block_number,
             # Card traits ("Type" line on the card: FILM, Mink, Music, ...) go
             # into the shared types text[] column; multi-trait cards are
             # slash-separated on the source ("FILM/Music").
             "types": [t.strip() for t in feature.split("/") if t.strip()] if feature else None,
+            # Parsed searcher predicate for the deck stats hit-rate feature
+            # (null = not a recognized searcher). See search_meta.py.
+            "search_meta": search_meta_for(code, effect, _OVERRIDES),
         })
     return cards
 
@@ -315,7 +360,12 @@ def existing_card_codes(codes: list[str]) -> set[str]:
 def upsert_cards(rows: list[dict]) -> None:
     if not rows:
         return
-    payload = [{k: v for k, v in r.items() if k not in ("feature", "_src_url")} for r in rows]
+    drop = {"feature", "_src_url"}
+    if not INCLUDE_SEARCH_META:
+        drop.add("search_meta")  # column not present yet (migration unapplied)
+    if not INCLUDE_BLOCK:
+        drop.add("block_number")  # column not present yet (migration unapplied)
+    payload = [{k: v for k, v in r.items() if k not in drop} for r in rows]
     r = sb_session.post(
         f"{SUPABASE_URL}/rest/v1/cards",
         headers={
@@ -332,9 +382,29 @@ def upsert_cards(rows: list[dict]) -> None:
 
 
 def main() -> None:
+    global INCLUDE_SEARCH_META, INCLUDE_BLOCK
     print("=== Pawpaw Ko card import (R2 mode) ===")
 
+    INCLUDE_SEARCH_META = cards_has_column("search_meta")
+    if INCLUDE_SEARCH_META:
+        print("    (search_meta column present — populating searcher predicates)")
+    else:
+        print("    (! cards.search_meta missing — apply search_meta_migration.sql to "
+              "enable searcher data; importing without it for now)")
+
+    INCLUDE_BLOCK = cards_has_column("block_number")
+    if INCLUDE_BLOCK:
+        print("    (block_number column present — capturing printed block icons)")
+    else:
+        print("    (! cards.block_number missing — apply block_number_migration.sql to "
+              "enable block capture; importing without it for now)")
+
     args = sys.argv[1:]
+    # --check-rules: skip importing, just run the deck-rule reconciliation.
+    if "--check-rules" in args:
+        print("[check-rules] reconciling deck rules against block numbers + official ban list")
+        rules_check.run(session=sb_session)
+        return
     # Incremental by default: only process cards not already in the DB.
     # Pass --full to re-download/re-upsert everything (e.g. errata refresh).
     # --new-only is still accepted as an explicit no-op alias.
@@ -420,6 +490,14 @@ def main() -> None:
             "lock their exact cross-family ordering, then re-run that series "
             "with --full to re-upsert."
         )
+
+    # Detect-and-report: flag rule changes the import may have introduced
+    # (new sets, candidate exemptions, new/removed official bans). Writes
+    # nothing; never let a reconciliation hiccup fail a good import.
+    try:
+        rules_check.run(session=sb_session)
+    except Exception as e:
+        print(f"  ! rule reconciliation skipped: {e}")
 
 
 if __name__ == "__main__":

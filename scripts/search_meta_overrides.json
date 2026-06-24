@@ -1,0 +1,12 @@
+{
+  "_comment": "Manual searcher-predicate overrides keyed by card_code. The auto-parser (search_meta.py) wins for everything not listed here; add an entry to fix a card it flagged 'review' or got wrong. Set a card_code to null to force 'not a searcher'. Shape of a value = the search_meta object (see search_meta.py docstring); 'source' is set to 'manual' automatically. The _comment key is ignored.",
+  "_example_OP12-034": {
+    "kind": "dig", "look": 5, "take": 1,
+    "filters": [
+      { "colors": ["green"], "category": "CHARACTER" },
+      { "colors": ["green"], "category": "EVENT" }
+    ],
+    "union": true, "gated": true, "trigger": ["On Play"],
+    "template": "dig_reveal_add", "confidence": "manual"
+  }
+}

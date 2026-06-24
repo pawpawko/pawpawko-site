@@ -174,7 +174,12 @@ insert into public.rotation_exempt_cards (game, card_code, note) values
   ('optcg', 'OP16-063', 'SPR — Kuzan'),
   ('optcg', 'OP16-065', 'SPR — Sakazuki'),
   ('optcg', 'OP16-073', 'SPR — Borsalino'),
-  -- Block Number 4 cards — legal through 2029-03-31 (official list)
+  -- Block Number 4 cards — legal through 2029-03-31 (official list).
+  -- NOTE: these carry an official "Block Number update" — the block icon
+  -- PRINTED on the card (and shown on en.onepiece-cardgame.com) is the old
+  -- number (e.g. 1), but Bandai reassigned them to Block 4, so they stay
+  -- Standard-legal. Do NOT auto-derive these from the card-list scrape; the
+  -- printed block there is wrong for exactly these cards.
   ('optcg', 'OP01-039', 'Block 4 — Killer'),
   ('optcg', 'OP01-055', 'Block 4 — You Can Be My Samurai!!'),
   ('optcg', 'OP02-005', 'Block 4 — Curly Dadan'),
@@ -184,7 +189,7 @@ insert into public.rotation_exempt_cards (game, card_code, note) values
   ('optcg', 'OP03-048', 'Block 4 — Nojiko'),
   ('optcg', 'OP03-072', 'Block 4 — Gum-Gum Jet Gatling'),
   ('optcg', 'OP03-097', 'Block 4 — Six King Pistol'),
-  ('optcg', 'OP04-016', 'Block 4 — Bad Manners Kick Course'),
+  ('optcg', 'OP04-016', 'Block 4 (printed icon shows 1; official Block Number update) — Bad Manners Kick Course'),
   ('optcg', 'OP04-077', 'Block 4 — Ideo'),
   ('optcg', 'OP04-096', 'Block 4 — Corrida Coliseum'),
   ('optcg', 'ST01-011', 'Block 4 — Brook'),
