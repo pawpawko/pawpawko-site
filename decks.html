@@ -85,7 +85,7 @@
     .eye-wrap:hover .eye-tip { display:block; }
     #edCounts { margin-top:.9rem; }
     .deck-cards-grid { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:.6rem; margin-bottom:1rem; }
-    .deck-card-tile { position:relative; cursor:pointer; }
+    .deck-card-tile { position:relative; cursor:pointer; container-type:inline-size; }
     .deck-card-tile img { width:100%; aspect-ratio:.72; object-fit:cover; border-radius:6px; display:block; }
     .deck-card-tile.selected img { outline:2px solid #c9956a; }
     .deck-card-tile .qty-badge { position:absolute; top:4px; left:50%; transform:translateX(-50%); background:#000; border:1px solid rgba(255,255,255,.35); border-radius:999px; padding:.12rem .6rem; font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif; font-size:1.05rem; font-weight:800; line-height:1.2; color:#fff; }
@@ -111,6 +111,16 @@
     .card-act:disabled { opacity:.35; cursor:default; }
     /* At the copy cap: still visible + hoverable, but clicks are ignored. */
     .card-act.at-cap { cursor:not-allowed; }
+    /* Fluid card-tile overlays: scale the badges/buttons to each card's own
+       width (cqi) so they stay proportional as cards shrink/grow with the
+       window or in the side-docked bench. Fixed values above are the fallback
+       + the clamp ceiling, so wide cards look exactly as before. */
+    .deck-card-tile .card-act { width:clamp(22px, 24cqi, 34px); height:clamp(22px, 24cqi, 34px); font-size:clamp(0.78rem, 16cqi, 1.15rem); }
+    .deck-card-tile .card-act svg { width:clamp(13px, 14cqi, 20px); height:clamp(13px, 14cqi, 20px); }
+    .deck-card-tile .card-acts { gap:clamp(0.18rem, 3cqi, 0.4rem); }
+    .deck-card-tile .qty-badge { font-size:clamp(0.6rem, 11cqi, 1.05rem); padding:clamp(0.04rem, 1cqi, 0.12rem) clamp(0.3rem, 5cqi, 0.6rem); }
+    .deck-card-tile .own-elsewhere { font-size:clamp(0.58rem, 10cqi, 1.15rem); padding:clamp(0.08rem, 2cqi, 0.2rem) clamp(0.3rem, 5cqi, 0.65rem); }
+    .deck-card-tile .bench-status { font-size:clamp(0.46rem, 8cqi, 0.6rem); }
     .cb-tile-img { position:relative; }
     .card-zoom-overlay { position:fixed; inset:0; background:rgba(8,6,14,.9); z-index:2000; display:flex; align-items:center; justify-content:center; padding:2rem; cursor:zoom-out; }
     .card-zoom-overlay[hidden] { display:none; }
@@ -168,9 +178,36 @@
     .cb-owned .owned-tip { right:0; }
     .dl-owned:hover .owned-tip, .cb-owned:hover .owned-tip { display:block; }
     /* Bench: local-only staging area for extra cards (dimmed, drag-and-drop) */
-    .deck-bench { margin-top:1rem; padding:.75rem .85rem 1rem; background:rgba(0,0,0,.28); border:1px dashed var(--border,#3a3344); border-radius:10px; }
+    .deck-bench-toggle-row { margin-top:1rem; display:flex; gap:.5rem; align-items:stretch; }
+    .deck-bench-toggle-row #edBenchBtn { flex:1; }      /* spans the deck width (minus the dock toggle) */
+    .bench-dock-btn { flex:0 0 auto; min-width:2.5rem; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; padding:0 .5rem; font-size:1.05rem; line-height:1; background:var(--bg-card,#1c1622); border:1px solid var(--border,#3a3344); border-radius:6px; color:var(--text-secondary,#cbbfb5); }
+    .bench-dock-btn:hover { border-color:var(--accent,#d8b751); color:var(--accent,#d8b751); }
+    .bench-dock-btn[aria-pressed="true"] { background:var(--accent,#d8b751); border-color:var(--accent,#d8b751); color:#1a1206; }
+    /* Side-dock layout: deck grid on the left, bench panel on the right. */
+    .deck-main.bench-side { display:flex; gap:1rem; align-items:flex-start; }
+    .deck-main.bench-side > #edDeckGrid { flex:1 1 0; min-width:0; }
+    .deck-main.bench-side .deck-bench-area { flex:0 0 auto; width:min(42%, 440px); }
+    .deck-main.bench-side .deck-bench-toggle-row { margin-top:0; }
+    .deck-main.bench-side .deck-bench-grid { grid-template-columns:repeat(3, minmax(0,1fr)); }
+    @media (max-width:860px) { .deck-main.bench-side { display:block; } .deck-main.bench-side .deck-bench-area { width:auto; } }
+    .deck-bench { margin-top:.6rem; padding:.75rem .85rem 1rem; background:rgba(0,0,0,.28); border:1px dashed var(--border,#3a3344); border-radius:10px; }
     .deck-bench-head { font-size:.72rem; color:var(--text-muted,#988e85); margin-bottom:.6rem; line-height:1.45; }
     .deck-bench-grid { opacity:.92; }
+    /* "Send owned copies to trade binder" action on benched owned cards. */
+    .bench-tile .bench-trade { color:var(--accent,#d8b751); border-color:var(--accent,#d8b751); font-size:.9rem; }
+    /* Owned / not-owned status flag on each benched card. */
+    .bench-status { position:absolute; top:4px; left:4px; z-index:4; font-size:.56rem; font-weight:800; letter-spacing:.04em; padding:.1rem .34rem; border-radius:6px; line-height:1.25; white-space:nowrap; }
+    .bench-status-owned { background:rgba(120,201,106,.92); color:#0b1f12; }
+    .bench-status-unowned { background:rgba(0,0,0,.62); color:#cbbfb5; border:1px solid var(--border,#3a3344); }
+    .bench-status-mixed { background:rgba(216,183,81,.92); color:#2a1f08; }
+    .bench-tile.bench-owned img { outline:2px solid rgba(120,201,106,.55); outline-offset:-2px; }
+    .bench-tile.bench-mixed img { outline:2px solid rgba(216,183,81,.55); outline-offset:-2px; }
+    .bench-tile.bench-unowned img { opacity:.78; }
+    /* Over-50 "sent to bench" feedback in the Add Cards overlay: positive (not
+       red) + a flash that re-triggers on every click. */
+    .auth-error.cb-note { color:#7ec96a; }
+    @keyframes cbFlash { 0%{ opacity:.25; } 35%{ opacity:1; } 100%{ opacity:1; } }
+    .cb-flash { animation:cbFlash .4s ease; }
     .deck-bench-empty { grid-column:1 / -1; font-size:.8rem; color:var(--text-muted,#988e85); text-align:center; padding:1.4rem 1rem; border:1px dashed var(--border,#3a3344); border-radius:8px; }
     .deck-card-tile.dragging { opacity:.4; }
     .deck-card-tile.drop-target { outline:2px dashed var(--accent,#c9956a); outline-offset:2px; }
@@ -360,13 +397,20 @@
           <!-- right: deck contents (5-wide card grid) + add button -->
           <div>
             <div class="deck-top-row">
-              <button class="btn btn-sm" id="edBenchBtn" aria-haspopup="true" aria-expanded="false">Bench (0) ▾</button>
               <button class="btn btn-sm" id="edAddBtn">+ Add Cards</button>
             </div>
-            <div class="deck-cards-grid" id="edDeckGrid"></div>
-            <div class="deck-bench" id="edBenchSection" style="display:none;">
-              <div class="deck-bench-head">Bench — extras, not counted in the deck. Drag a card onto a deck card to swap, or onto the deck to add.</div>
-              <div class="deck-cards-grid deck-bench-grid" id="edBenchGrid"></div>
+            <div class="deck-main" id="edDeckMain">
+              <div class="deck-cards-grid" id="edDeckGrid"></div>
+              <div class="deck-bench-area">
+                <div class="deck-bench-toggle-row">
+                  <button class="btn btn-sm" id="edBenchBtn" aria-haspopup="true" aria-expanded="false">Bench ▾</button>
+                  <button class="bench-dock-btn" id="edBenchSideBtn" type="button" aria-pressed="false" title="Dock bench to the side">⤢</button>
+                </div>
+                <div class="deck-bench" id="edBenchSection" style="display:none;">
+                  <div class="deck-bench-head">Bench — extras, not counted in the deck. Drag a card onto a deck card to swap, or onto the deck to add.</div>
+                  <div class="deck-cards-grid deck-bench-grid" id="edBenchGrid"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

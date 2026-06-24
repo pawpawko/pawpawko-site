@@ -76,6 +76,7 @@
     $('edCostFinishBtn').addEventListener('click', () => { closeMenus(); openPrices('finish'); });
     document.addEventListener('click', (e) => { if (!e.target.closest('.deck-io-wrap')) closeMenus(); });
     $('edBenchBtn').addEventListener('click', toggleBench);
+    $('edBenchSideBtn').addEventListener('click', toggleBenchSide);
     $('edStatsBtn').addEventListener('click', openStats);
     $('stClose').addEventListener('click', closeStats);
     $('stOverlay').addEventListener('click', (e) => { if (e.target === $('stOverlay')) closeStats(); });
@@ -594,6 +595,7 @@
     let code = null;   // card currently magnified
     let arts = [];     // base print + its _p alt-art variants
     let artIdx = 0;
+    let zone = 'deck'; // 'deck' | 'bench' — which list the magnified card edits
     const artsCache = {};
     function hide() {
       if (ov) { ov.hidden = true; code = null; arts = []; artIdx = 0; ov.querySelector('.cz-img').src = ''; }
@@ -619,8 +621,50 @@
           </div>
         </div>`;
     }
+    // Owned-only editor for a benched card — lets you mark benched copies as
+    // owned, which surfaces the "send to trade binder" action on the bench tile.
+    function benchEditHTML(b) {
+      const owned = b.owned || 0;
+      return `
+        <div class="cz-name">${esc(b.code)} — benched ×${b.qty}</div>
+        <div class="cz-steppers">
+          <div>
+            <span class="stepper-label">Owned</span>
+            <div class="stepper ${owned >= b.qty ? 'owned-full' : ''}" data-kind="owned">
+              <button data-d="-1" ${owned <= 0 ? 'disabled' : ''}>−</button><input class="cz-val" type="number" inputmode="numeric" data-kind="owned" value="${owned}" min="0" max="${b.qty}"><span class="cz-of">/ ${b.qty}</span><button data-d="1" ${owned >= b.qty ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    function setBenchOwned(c, value) {
+      const b = bench.find(x => x.code === c);
+      if (!b) return;
+      const v = Math.max(0, Math.min(b.qty, isNaN(value) ? b.owned : value));
+      if (v === b.owned) return;
+      b.owned = v;
+      saveBench(); renderBench();
+      renderEdit(); // refresh stepper state (disabled buttons / owned-full)
+    }
     function renderEdit() {
       const box = ov.querySelector('.cz-edit');
+      if (zone === 'bench') {
+        const b = code ? bench.find(x => x.code === code) : null;
+        if (!b) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        box.style.display = '';
+        box.innerHTML = benchEditHTML(b);
+        box.querySelectorAll('.stepper button').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const cur = (bench.find(x => x.code === b.code) || {}).owned || 0;
+            setBenchOwned(b.code, cur + parseInt(btn.dataset.d, 10));
+          });
+        });
+        box.querySelectorAll('.cz-val').forEach(inp => {
+          inp.addEventListener('change', () => setBenchOwned(b.code, parseInt(inp.value, 10)));
+          inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+        });
+        return;
+      }
       const r = code ? deckCards.find(x => x.card_code === code) : null;
       if (!r) { box.innerHTML = ''; box.style.display = 'none'; return; } // not a deck card → image only
       box.style.display = '';
@@ -672,7 +716,8 @@
       document.body.appendChild(ov);
       return ov;
     }
-    async function show(c) {
+    async function show(c, opts) {
+      zone = (opts && opts.zone) || 'deck';
       const base = String(c.card_code).split('_')[0];
       const override = cardArt[base]; // open on the currently-chosen art, if any
       const url = (override && (override.image_url_lg || override.image_url)) || (c && (c.image_url_lg || c.image_url));
@@ -696,6 +741,11 @@
     // magnified card was removed (qty stepped to 0).
     function refresh() {
       if (!ov || ov.hidden || !code) return;
+      if (zone === 'bench') {
+        if (!bench.find(x => x.code === code)) { hide(); return; }
+        renderEdit();
+        return;
+      }
       if (!deckCards.find(x => x.card_code === code)) { hide(); return; }
       renderEdit();
     }
@@ -880,6 +930,14 @@
     if (!row) return;
     $('edError').textContent = '';
     if (kind === 'qty') {
+      // Every minus sets the removed copy aside in the bench so it can be
+      // disposed there. Owned copies leave last (owned can't exceed quantity),
+      // so owned>=quantity means the removed copy is one you own — benched as
+      // owned (→ can go to the trade binder); otherwise it's benched as a
+      // not-owned/wishlist copy (→ delete only).
+      if (delta < 0 && row.quantity > 0) {
+        benchAdd(code, 1, row.owned >= row.quantity ? 1 : 0);
+      }
       const nq = row.quantity + delta;
       if (nq <= 0) localRemoveRow(code);
       else localSetRow(code, { quantity: nq, owned: Math.min(row.owned, nq) });
@@ -990,7 +1048,7 @@
   // deck in localStorage only, so server-side validity / wishlist sync /
   // Cost-to-Finish (all keyed off the 50 in deck_cards) are untouched. Drag a
   // bench card onto a deck card to swap, or onto the deck/bench to move across.
-  let bench = [];            // [{ code, qty }]
+  let bench = [];            // [{ code, qty, owned }]
   let dragSrc = null;        // { zone:'deck'|'bench', code } while dragging
 
   function benchKey(id) { return `pawpaw:deckBench:${id}`; }
@@ -998,7 +1056,7 @@
   function readBenchLocal() {
     try {
       const a = JSON.parse(localStorage.getItem(benchKey(deck.id)) || '[]');
-      return Array.isArray(a) ? a.filter(x => x && x.code && x.qty > 0).map(x => ({ code: x.code, qty: x.qty })) : [];
+      return Array.isArray(a) ? a.filter(x => x && x.code && x.qty > 0).map(x => ({ code: x.code, qty: x.qty, owned: Math.max(0, Math.min(x.qty, x.owned || 0)) })) : [];
     } catch (e) { return []; }
   }
   async function loadBench() {
@@ -1013,10 +1071,18 @@
     renderBench();
   }
   function benchCount() { return bench.reduce((s, b) => s + b.qty, 0); }
-  function updateBenchBtn() { const btn = $('edBenchBtn'); if (btn) btn.textContent = `Bench (${benchCount()}) ▾`; }
-  function benchAdd(code, qty) {
+  function updateBenchBtn() {
+    const btn = $('edBenchBtn');
+    if (!btn) return;
+    const sec = $('edBenchSection');
+    const open = sec && sec.style.display !== 'none';
+    btn.textContent = `Bench ${open ? '▴' : '▾'}`; // arrow reflects open/closed
+  }
+  function benchAdd(code, qty, owned) {
+    const o = Math.max(0, Math.min(qty, owned || 0));
     const e = bench.find(x => x.code === code);
-    if (e) e.qty += qty; else bench.push({ code, qty });
+    if (e) { e.qty += qty; e.owned = Math.min(e.qty, (e.owned || 0) + o); }
+    else bench.push({ code, qty, owned: o });
     saveBench(); renderBench();
   }
   function benchRemove(code) {
@@ -1026,9 +1092,28 @@
   }
   function toggleBench() {
     const sec = $('edBenchSection');
-    const show = !sec.style.display || sec.style.display === 'none';
+    // It's hidden only when display is explicitly 'none' (when shown it's '').
+    // The old `!sec.style.display` test treated the shown '' as "hide me too",
+    // so a second click never closed it.
+    const show = sec.style.display === 'none';
     sec.style.display = show ? '' : 'none';
     $('edBenchBtn').setAttribute('aria-expanded', show ? 'true' : 'false');
+    updateBenchBtn(); // flip the arrow to match the new state
+  }
+  // Dock the bench beside the deck (right side) vs. below it. Opens the bench
+  // when docking to the side so it's actually visible.
+  function toggleBenchSide() {
+    const main = $('edDeckMain');
+    if (!main) return;
+    const on = !main.classList.contains('bench-side');
+    main.classList.toggle('bench-side', on);
+    const btn = $('edBenchSideBtn');
+    if (btn) {
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.title = on ? 'Dock bench below' : 'Dock bench to the side';
+      btn.textContent = on ? '⤓' : '⤢';
+    }
+    if (on && $('edBenchSection').style.display === 'none') toggleBench();
   }
 
   // Insert / raise / remove a deck card to an exact quantity, creating or
@@ -1060,19 +1145,25 @@
     const row = deckCards.find(r => r.card_code === code);
     if (!row) return;
     $('edError').textContent = '';
-    benchAdd(code, row.quantity);
+    benchAdd(code, row.quantity, row.owned);
     setDeckQtyAbsolute(code, 0);
   }
   function addBenchToDeck(code) {
     const b = bench.find(x => x.code === code);
     if (!b) return;
     const cap = capFor(code);
-    const cur = (deckCards.find(r => r.card_code === code) || {}).quantity || 0;
+    const existing = deckCards.find(r => r.card_code === code) || {};
+    const cur = existing.quantity || 0;
+    const curOwned = existing.owned || 0;
+    const benchedOwned = b.owned || 0;
     let target = cur + b.qty;
     if (cap !== null) target = Math.min(target, cap);
     if (target <= cur) { $('edError').textContent = `Already at the max ${cap} cop${cap === 1 ? 'y' : 'ies'} of ${code}.`; return; }
     benchRemove(code);
     setDeckQtyAbsolute(code, target);
+    // Restore the benched owned count so a returning owned card isn't reset to 0.
+    const newOwned = Math.min(target, curOwned + benchedOwned);
+    if (newOwned > 0) setCardAbsolute(code, 'owned', newOwned);
   }
   function swapBenchIntoDeck(deckCode, benchCode) {
     if (deckCode === benchCode) return;
@@ -1081,14 +1172,19 @@
     if (!a || !b) return;
     $('edError').textContent = '';
     const qa = a.quantity;
+    const ownedA = a.owned;
+    const benchedBOwned = b.owned || 0;
     const capB = capFor(benchCode);
     const curB = (deckCards.find(r => r.card_code === benchCode) || {}).quantity || 0;
+    const curBOwned = (deckCards.find(r => r.card_code === benchCode) || {}).owned || 0;
     let targetB = curB + qa;
     if (capB !== null) targetB = Math.min(targetB, capB);
     benchRemove(benchCode);
-    benchAdd(deckCode, qa);
+    benchAdd(deckCode, qa, ownedA);
     setDeckQtyAbsolute(deckCode, 0);
     setDeckQtyAbsolute(benchCode, targetB);
+    const newBOwned = Math.min(targetB, curBOwned + benchedBOwned);
+    if (newBOwned > 0) setCardAbsolute(benchCode, 'owned', newBOwned);
   }
 
   // Drag plumbing shared by deck + bench tiles. The card image is the drag
@@ -1135,30 +1231,90 @@
     }
   }
 
+  // The single trade binder for this game (one per game), created on demand —
+  // mirrors how the wishlist binder auto-creates. Returns its id or null.
+  async function getOrCreateTradeBinder() {
+    if (!user) return null;
+    const { data: existing } = await window.sb.from('binders')
+      .select('id').eq('user_id', user.id).eq('category', GAME).eq('flair', 'trade').limit(1);
+    if (existing && existing.length) return existing[0].id;
+    const { data: created, error } = await window.sb.from('binders')
+      .insert({ user_id: user.id, name: 'Trade', category: GAME, flair: 'trade' })
+      .select('id').single();
+    if (error) { console.warn('create trade binder failed:', error.message); return null; }
+    return created.id;
+  }
+  // Send a benched card's OWNED copies to the trade binder as a 'trade' listing
+  // (increment if already listed), then drop it from the bench. Not-owned copies
+  // have no trade value, so only `owned` is added.
+  async function addBenchedToTradeBinder(code) {
+    const b = bench.find(x => x.code === code);
+    if (!b || !(b.owned > 0)) return;
+    const qty = b.owned;
+    const binderId = await getOrCreateTradeBinder();
+    if (!binderId) { $('edError').textContent = 'Could not find your trade binder.'; return; }
+    const { data: existing } = await window.sb.from('listings')
+      .select('id, quantity').eq('binder_id', binderId).eq('card_code', code).limit(1);
+    if (existing && existing.length) {
+      const { error } = await window.sb.from('listings')
+        .update({ quantity: (existing[0].quantity || 0) + qty }).eq('id', existing[0].id);
+      if (error) { $('edError').textContent = error.message; return; }
+    } else {
+      const { error } = await window.sb.from('listings')
+        .insert({ binder_id: binderId, card_code: code, quantity: qty, listing_type: 'trade' });
+      if (error) { $('edError').textContent = error.message; return; }
+    }
+    // Remove only the OWNED copies from the bench; any not-owned copies stay
+    // (they have no trade value — they can only be deleted).
+    const cur = bench.find(x => x.code === code);
+    if (cur) {
+      const rem = cur.qty - qty;
+      if (rem <= 0) benchRemove(code);
+      else { cur.qty = rem; cur.owned = Math.max(0, cur.owned - qty); saveBench(); renderBench(); }
+    }
+  }
+
   function renderBench() {
     updateBenchBtn();
     const grid = $('edBenchGrid');
     if (!grid) return;
     grid.innerHTML = '';
     if (!bench.length) {
-      grid.innerHTML = '<p class="deck-bench-empty">Drag a card here from your deck to bench it. Cards you add past 50 land here too.</p>';
+      grid.innerHTML = '<p class="deck-bench-empty">Cards you remove (− or drag here) land here. Owned copies can go to your trade binder; others can be deleted. Cards added past 50 land here too.</p>';
       return;
     }
     bench.slice().sort((x, y) => byCostThenCode({ card_code: x.code }, { card_code: y.code })).forEach(b => {
       const c = cardInfo[b.code] || {};
+      const owned = b.owned || 0;
+      const notOwned = b.qty - owned;
+      // Distinctly flag each benched card as owned / not-owned / mixed.
+      const status = owned <= 0 ? 'unowned' : (owned >= b.qty ? 'owned' : 'mixed');
+      const statusText = status === 'owned' ? 'OWNED'
+                       : status === 'unowned' ? 'NOT OWNED'
+                       : `✓${owned} · ○${notOwned}`;
       const tile = document.createElement('div');
-      tile.className = 'deck-card-tile bench-tile';
-      tile.title = `${c.name || b.code} — benched ×${b.qty}`;
+      tile.className = `deck-card-tile bench-tile bench-${status}`;
+      tile.title = `${c.name || b.code} — benched ×${b.qty} · ${owned} owned, ${notOwned} not owned`;
+      // Owned copies can be sent to the trade binder; not-owned can only be deleted.
+      const tradeBtn = owned > 0
+        ? `<button class="card-act bench-trade" aria-label="Add owned to trade binder" title="Add ${owned} owned to your trade binder">⇄</button>`
+        : '';
       tile.innerHTML = `
         <img src="${esc(c.image_url || '')}" alt="${esc(c.name || b.code)}">
+        <span class="bench-status bench-status-${status}">${statusText}</span>
         <div class="card-acts">
+          ${tradeBtn}
           <button class="card-act bench-up" aria-label="Move to deck" title="Move to deck">▲</button>
-          <button class="card-act bench-del" aria-label="Remove from bench" title="Remove from bench">✕</button>
+          <button class="card-act bench-del" aria-label="Delete from bench" title="Delete from bench">✕</button>
         </div>
         <span class="qty-badge"><span class="qty-total">${b.qty > 4 ? 'X' : 'x' + b.qty}</span></span>`;
       makeDragHandle(tile, 'bench', b.code);
+      const tradeEl = tile.querySelector('.bench-trade');
+      if (tradeEl) tradeEl.addEventListener('click', e => { e.stopPropagation(); addBenchedToTradeBinder(b.code); });
       tile.querySelector('.bench-up').addEventListener('click', e => { e.stopPropagation(); addBenchToDeck(b.code); });
       tile.querySelector('.bench-del').addEventListener('click', e => { e.stopPropagation(); benchRemove(b.code); });
+      // Tap the card (not a button) to magnify — there you can mark copies owned.
+      tile.addEventListener('click', () => cardZoom.show(c, { zone: 'bench' }));
       grid.appendChild(tile);
     });
   }
@@ -1438,14 +1594,31 @@
   // Click-to-add: optimistic + serialized via the shared deck-write queue, so
   // fast clicks can't race into a duplicate INSERT (PK violation) that silently
   // drops. The count bumps locally for instant feedback; writes run in order.
+  // Re-trigger a brief flash on an element (restart its CSS animation) so a
+  // repeated update still reads as "something happened" even when the text barely
+  // changes.
+  function flashCb(el) {
+    if (!el) return;
+    el.classList.remove('cb-flash');
+    void el.offsetWidth; // force reflow to restart the animation
+    el.classList.add('cb-flash');
+  }
+
   function addCard(card) {
     $('edError').textContent = '';
-    $('cbError').textContent = '';
+    const cbErr = $('cbError');
+    cbErr.textContent = '';
+    cbErr.classList.remove('cb-note');
     cardInfo[card.card_code] = card;
     const deckTotal = deckCards.reduce((s, r) => s + r.quantity, 0);
     if (deckTotal >= 50) { // deck is full — overflow lands on the bench
-      benchAdd(card.card_code, 1);
-      $('cbError').textContent = `Deck is at 50 — ${card.card_code} added to the bench.`;
+      benchAdd(card.card_code, 1, $('cbOwned').checked ? 1 : 0);
+      const bq = (bench.find(x => x.code === card.card_code) || {}).qty || 1;
+      // Running count + flash so EVERY over-50 click gives feedback, not just the
+      // first (the count changes and the line re-animates on each add).
+      cbErr.classList.add('cb-note');
+      cbErr.textContent = `Deck's at 50 — ${card.card_code} sent to the bench (×${bq} there).`;
+      flashCb(cbErr);
       return;
     }
     const owned = $('cbOwned').checked; // count the added copy as owned
