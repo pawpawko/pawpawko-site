@@ -353,7 +353,7 @@
     const { data: L } = await window.sb
       // types + attribute are needed to evaluate gated-searcher conditions
       // ("If your Leader has the {X} type / <Y> attribute") in the stats panel.
-      .from('cards').select('card_code,name,color,image_url,image_url_lg,types,attribute')
+      .from('cards').select('card_code,name,color,cost,life,image_url,image_url_lg,types,attribute')
       .eq('game', GAME).eq('card_code', d.leader_card_code).single();
     if (seq !== openSeq) return;             // superseded while fetching the leader
     leaderCard = L;
@@ -1355,12 +1355,22 @@
   // /look at the top N cards of your deck/ matched zero cards.
   const SEARCH_COLORS = ['red', 'green', 'blue', 'purple', 'black', 'yellow'];
   const SEARCH_CLAUSE_RE = /look at (?:up to )?(\d+) cards? from the top of your deck[;:,. ]*reveal\s+(.*?)\s*[,;]?\s*(?:and\s+)?add\s+(?:it|them|up to \d+[^.]*?)\s+to your hand/i;
+  // A card HAS a [Trigger] keyword (vs. merely referencing one — searchers and
+  // recursion say "… a card with a [Trigger]" / "… and a [Trigger] …"). Strip
+  // those reference phrases first, then look for a remaining [Trigger] keyword.
+  function hasTrigger(effect) {
+    return /\[Trigger\]/i.test(String(effect || '').replace(/(?:with|and)\s+an?\s+\[Trigger\]/gi, ''));
+  }
   function parseSearcherSub(s) {
     s = s.replace(/\s+/g, ' ').trim();
     const f = {};
     const excl = [...s.matchAll(/other than \[([^\]]+)\]/gi)].map(x => x[1]);
     const rest = s.replace(/other than \[[^\]]+\]/gi, ' ');
-    const names = [...rest.matchAll(/\[([^\]]+)\]/g)].map(x => x[1]);
+    // "[Trigger]" is a keyword (e.g. "a card with a [Trigger]"), not a card name —
+    // matched against each candidate's effect text in cardMatchesSub.
+    const allNames = [...rest.matchAll(/\[([^\]]+)\]/g)].map(x => x[1]);
+    const trigger = allNames.some(n => /^trigger$/i.test(n));
+    const names = allNames.filter(n => !/^trigger$/i.test(n));
     const traits = [...s.matchAll(/\{([^}]+)\}/g)].map(x => x[1])
       .concat([...s.matchAll(/type including "([^"]+)"/gi)].map(x => x[1]));
     const colors = [...new Set([...s.matchAll(new RegExp('\\b(' + SEARCH_COLORS.join('|') + ')\\b', 'gi'))].map(x => x[1].toLowerCase()))];
@@ -1377,6 +1387,7 @@
     if (category) f.category = category;
     if (traits.length) f.traits = traits;
     if (colors.length) f.colors = colors;
+    if (trigger) f.trigger = true;
     if (names.length) f.names = names;
     if (excl.length) f.exclude = excl;
     if (cost) f.cost = cost;
@@ -1425,6 +1436,7 @@
     if (f.names) id.push(f.names.includes(ci.name));
     if (f.traits) id.push(Array.isArray(ci.types) && ci.types.some(t => f.traits.includes(t)));
     if (f.colors) { const cc = (ci.color || '').toLowerCase(); id.push(f.colors.some(col => cc.includes(col))); }
+    if (f.trigger) id.push(hasTrigger(ci.effect_text));
     if (id.length && !id.some(Boolean)) return false;       // identity constraints are OR'd
     if (f.category && ci.type !== f.category) return false;
     if (f.cost) {
@@ -1443,6 +1455,7 @@
       if (f.names) p.push(f.names.map(n => '[' + n + ']').join('/'));
       if (f.traits) p.push(f.traits.map(t => '{' + t + '}').join('/'));
       if (f.colors) p.push(f.colors.join('/'));
+      if (f.trigger) p.push('[Trigger]');
       if (f.category) p.push(f.category[0] + f.category.slice(1).toLowerCase());
       if (f.cost) p.push('cost ' + (f.cost.op === 'range' ? `${f.cost.min}-${f.cost.max}` : f.cost.op === '==' ? f.cost.val : f.cost.op + f.cost.val));
       return p.join(' ') || 'any card';
@@ -1460,6 +1473,7 @@
     return 1 - pMiss;
   }
   function openStats() {
+    if (!deckValid) return; // stats only meaningful on a valid 50-card legal deck (button is also disabled)
     $('stOverlay').style.display = '';
     const body = $('stBody');
     if (!deckCards.length) { body.innerHTML = '<p class="text-muted-line">No cards in the deck yet.</p>'; return; }
@@ -1561,16 +1575,30 @@
           `<tr class="st-sdetail" hidden><td colspan="4" style="padding:.2rem .6rem .7rem 1.6rem;color:var(--text-muted,#988e85);font-size:.82rem">Can hit: ${detail}</td></tr>`;
       }).join('');
       searchHtml =
-        `<p class="text-muted-line">${searcherRows.length} searcher${searcherRows.length === 1 ? '' : 's'} · ${searcherCopies} cop${searcherCopies === 1 ? 'y' : 'ies'} · <span title="single 5-card hand: ${Math.round(openRaw * 100)}%; a free mulligan gives a 2nd shot">~${Math.round(openAccess * 100)}% to open one in your first 5 (with mulligan)</span>. <span class="pc-code">tap a row for targets</span></p>` +
-        `<table class="st-search"><thead><tr><th>Searcher</th><th class="num">Depth</th><th class="num">Targets</th><th class="num">Hit %</th></tr></thead><tbody>${rows}</tbody></table>`;
+        `<p class="text-muted-line">${Math.round(openAccess * 100)}% to open one in your first 5 (with mulligan)</span>.<table class="st-search"><thead><tr><th>Searcher</th><th class="num">Depth</th><th class="num">Targets</th><th class="num">Hit %</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
-    const searchSection = `
-      <div class="st-section">
-        <h4>Searchers <span class="text-muted-line" style="font-weight:400;text-transform:none;letter-spacing:0;">— chance to hit a target, modeled at the turn you'd play it</span></h4>
-        ${searchHtml}
-      </div>`;
 
-    body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + costCurve + searchSection;
+    // Triggers — [Trigger] cards can act when they're dealt to you from your Life.
+    // A leader's "cost" column is its Life value; Life cards are drawn from the 50,
+    // so chance-in-life is hypergeometric (the same hitChance used for searchers).
+    const trigHits = deckCards
+      .filter(r => hasTrigger((cardInfo[r.card_code] || {}).effect_text))
+      .map(r => ({ name: (cardInfo[r.card_code] || {}).name || r.card_code, qty: r.quantity }))
+      .sort((a, b) => b.qty - a.qty);
+    const trigCount = trigHits.reduce((s, h) => s + h.qty, 0); // qty-weighted: counts each card's copies
+    const life = (leaderCard && (leaderCard.life ?? leaderCard.cost)) || 5;
+    const trigInLife = hitChance(total, trigCount, life);
+    const expTrig = total ? trigCount * life / total : 0;
+    const trigColor = trigInLife >= 0.75 ? '#7ec96a' : trigInLife >= 0.5 ? '#e8b757' : '#b0506a';
+    const triggers = `
+      <div class="st-section">
+        <h4>Triggers <span class="text-muted-line" style="font-weight:400;text-transform:none;letter-spacing:0;">— act when taken from your ${life} Life</span></h4>
+        ${trigCount
+          ? `<p class="text-muted-line st-trow" style="cursor:pointer"><span class="st-care">▸</span> <strong>${trigCount}</strong> <span class="pc-code">[Trigger]</span> card${trigCount === 1 ? '' : 's'} · <strong style="color:${trigColor}">${Math.round(trigInLife * 100)}%</strong> chance ≥1 starts in Life · ~${expTrig.toFixed(1)} expected in your ${life} Life <span class="pc-code">tap for the list</span></p>`
+            + `<div class="st-tdetail" hidden style="padding:.1rem .6rem .7rem 1.6rem;color:var(--text-muted,#988e85);font-size:.82rem">${trigHits.map(h => `${esc(h.name)} <span class="pc-code">×${h.qty}</span>`).join(' · ')}</div>`
+          : '<p class="text-muted-line">No <span class="pc-code">[Trigger]</span> cards in the deck.</p>'}
+      </div>`;
+    body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + triggers + costCurve + searchSection;
 
     // Expand/collapse each searcher's target breakdown.
     body.querySelectorAll('.st-srow').forEach(tr => {
@@ -1582,6 +1610,16 @@
           if (car) car.textContent = d.hidden ? '▸' : '▾';
         }
       });
+    });
+    // Expand/collapse the Triggers card list.
+    const trow = body.querySelector('.st-trow');
+    if (trow) trow.addEventListener('click', () => {
+      const d = trow.nextElementSibling;
+      if (d && d.classList.contains('st-tdetail')) {
+        d.hidden = !d.hidden;
+        const car = trow.querySelector('.st-care');
+        if (car) car.textContent = d.hidden ? '▸' : '▾';
+      }
     });
   }
 
@@ -1852,9 +1890,13 @@
     });
   }
 
+  let deckValid = false;
   async function refreshValidity() {
     const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: deck.id });
     if (!v) return;
+    deckValid = !!v.valid;
+    const statsBtn = $('edStatsBtn');
+    if (statsBtn) { statsBtn.disabled = !deckValid; statsBtn.title = deckValid ? '' : 'Deck must be valid (50 legal cards) before stats are available'; }
     const total = v.total_cards ?? 0;
     const miss = v.missing_cards ?? 0;
     if (!miss) ownMode = false; // nothing missing → leave owned-edit mode

@@ -146,6 +146,7 @@ SB = {
 _OVERRIDES = load_overrides()
 INCLUDE_SEARCH_META = True
 INCLUDE_BLOCK = True  # cards.block_number present? (apply block_number_migration.sql)
+INCLUDE_LIFE = True  # cards.life present? (apply life_migration.sql)
 
 
 def cards_has_column(col: str) -> bool:
@@ -231,8 +232,21 @@ def parse_cards(html: str) -> list[dict]:
         name_el = dl.select_one(".cardName")
         name = name_el.get_text(strip=True) if name_el else None
 
+        # Leaders reuse the .cost slot for their Life (it renders "Life N" rather
+        # than "Cost N"), so route by the label: Life -> life, Cost -> cost.
+        cost = None
+        life = None
         cost_el = dl.select_one(".cost")
-        cost = first_int(cost_el.get_text() if cost_el else None)
+        if cost_el:
+            _raw_cost = cost_el.get_text(" ", strip=True)
+            _val = first_int(_raw_cost)
+            if re.match(r"^\s*Life\b", _raw_cost, re.I):
+                life = _val
+            else:
+                cost = _val
+        # No dedicated life column yet? Keep Life in cost so nothing regresses.
+        if life is not None and not INCLUDE_LIFE:
+            cost = life
 
         power_el = dl.select_one(".power")
         power = first_int(power_el.get_text() if power_el else None)
@@ -268,11 +282,25 @@ def parse_cards(html: str) -> list[dict]:
             txt = re.sub(r"^Effect\s*", "", txt).strip()
             effect = txt or None
 
+        # A card's [Trigger] keyword effect lives in its own `.trigger` block on
+        # the official cardlist (separate from `.text`/Effect, labelled "Trigger").
+        # Only `.text` used to be read, so [Trigger] effects were dropped entirely
+        # (only inline "with a [Trigger]" searcher references in `.text` survived).
+        # Pull `.trigger`, drop the label, and fold the "[Trigger] ..." line into
+        # effect_text so the search/stat parsers can see it.
         trigger_text = None
-        if effect and "[Trigger]" in effect:
-            m = re.search(r"\[Trigger\]\s*(.*)", effect, re.DOTALL)
-            if m:
-                trigger_text = m.group(1).strip()
+        trig_el = dl.select_one(".trigger")
+        if trig_el:
+            for br in trig_el.find_all("br"):
+                br.replace_with("\n")
+            ttxt = re.sub(r"^Trigger\s*", "", trig_el.get_text("\n", strip=True)).strip()
+            if ttxt:
+                trig_line = ttxt if ttxt.startswith("[Trigger]") else "[Trigger] " + ttxt
+                if not effect:
+                    effect = trig_line
+                elif trig_line not in effect:
+                    effect = effect + "\n" + trig_line
+                trigger_text = re.sub(r"^\[Trigger\]\s*", "", trig_line).strip()
 
         getinfo_el = dl.select_one(".getInfo")
         series_label = None
@@ -315,6 +343,7 @@ def parse_cards(html: str) -> list[dict]:
             "color": color,
             "type": ctype,
             "cost": cost,
+            "life": life,
             "power": power,
             "counter": counter,
             "attribute": attribute,
@@ -365,6 +394,8 @@ def upsert_cards(rows: list[dict]) -> None:
         drop.add("search_meta")  # column not present yet (migration unapplied)
     if not INCLUDE_BLOCK:
         drop.add("block_number")  # column not present yet (migration unapplied)
+    if not INCLUDE_LIFE:
+        drop.add("life")  # column not present yet (migration unapplied)
     payload = [{k: v for k, v in r.items() if k not in drop} for r in rows]
     r = sb_session.post(
         f"{SUPABASE_URL}/rest/v1/cards",
@@ -382,7 +413,7 @@ def upsert_cards(rows: list[dict]) -> None:
 
 
 def main() -> None:
-    global INCLUDE_SEARCH_META, INCLUDE_BLOCK
+    global INCLUDE_SEARCH_META, INCLUDE_BLOCK, INCLUDE_LIFE
     print("=== Pawpaw Ko card import (R2 mode) ===")
 
     INCLUDE_SEARCH_META = cards_has_column("search_meta")
@@ -398,6 +429,13 @@ def main() -> None:
     else:
         print("    (! cards.block_number missing — apply block_number_migration.sql to "
               "enable block capture; importing without it for now)")
+
+    INCLUDE_LIFE = cards_has_column("life")
+    if INCLUDE_LIFE:
+        print("    (life column present — capturing Leader Life)")
+    else:
+        print("    (! cards.life missing — apply life_migration.sql to enable Leader "
+              "Life capture; storing Life in cost for now)")
 
     args = sys.argv[1:]
     # --check-rules: skip importing, just run the deck-rule reconciliation.

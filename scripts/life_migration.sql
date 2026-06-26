@@ -1,0 +1,11 @@
+-- Dedicated Leader Life column.
+--
+-- Leaders render their Life in the SAME slot characters use for Cost (the
+-- official cardlist's `.cost` element reads "Life N" on a leader), so it was
+-- historically scraped into cards.cost. This gives Life a proper home: the
+-- importer now routes "Life N" -> cards.life and "Cost N" -> cards.cost, and
+-- leaders get cost = null. Apply this BEFORE the next `--full` re-import so the
+-- same pass backfills it; the clients read leader.life (falling back to cost).
+--
+-- Idempotent. cards stays world-readable; service-role writes only (no RLS change).
+alter table public.cards add column if not exists life int;
