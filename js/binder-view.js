@@ -137,7 +137,7 @@
     const displayName = profile.display_name || 'someone';
     const binderName  = profile.binder_name || 'binder';
     const titleText = `${displayName}'s ${binderName}`;
-    const editIcon = canEdit
+    const editIcon = isOwner
       ? `<button type="button" id="binderNameEditBtn" class="binder-name-edit-btn" aria-label="Edit binder name" title="Edit name">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.04a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66Z"/>
@@ -152,7 +152,7 @@
     renderCategory(profile.category || 'optcg');
     renderFlair(profile.flair || 'trade');
     applyLayout(profile.layout || '4x3');
-    if (canEdit) { wireFlairSelect(); wireBinderNameEdit(); }
+    if (isOwner) { wireFlairSelect(); wireBinderNameEdit(); }   // binder-row metadata is owner-only (RLS enforces it too); collaborators co-edit cards only
 
     if (isLoggedIn) {
       const rows = [];
@@ -309,6 +309,7 @@
 
   async function saveLayout(layout) {
     applyLayout(layout);
+    if (!isOwner) return;   // layout is an owner-only binder-row setting (RLS enforces it); apply locally for collaborators but don't fire a rejected UPDATE
     const { error } = await window.sb.from('binders')
       .update({ layout }).eq('id', currentBinderId);
     if (error) console.warn('layout save failed:', error.message);
