@@ -789,7 +789,7 @@ end $$;
 alter table public.cards add column if not exists game text not null default 'optcg';
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'cards_game_check') then
-    alter table public.cards add constraint cards_game_check check (game in ('optcg','pokemon'));
+    alter table public.cards add constraint cards_game_check check (game in ('optcg','pokemon','cyberpunk'));
   end if;
 end $$;
 
