@@ -1808,8 +1808,9 @@ body.binder-editing .share-popover { display: none !important; }
   white-space: nowrap;
   line-height: 1;
 }
-.cat-optcg   { border-color: #c96a6a; color: #c96a6a; }
-.cat-pokemon { border-color: #c9b06a; color: #c9b06a; }
+.cat-optcg     { border-color: #c96a6a; color: #c96a6a; }
+.cat-pokemon   { border-color: #c9b06a; color: #c9b06a; }
+.cat-cyberpunk { border-color: #5aa9bf; color: #5aa9bf; }
 
 /* In the binder header, match the category pill to the flair pill's size */
 .binder-flair-row .category-pill {

@@ -128,7 +128,7 @@
             <label class="form-label" for="cbSeries">Set</label>
             <select class="form-input" id="cbSeries"><option value="">All</option></select>
           </div>
-          <div class="filter-group" data-game-filter="optcg">
+          <div class="filter-group" data-game-filter="optcg cyberpunk">
             <label class="form-label" for="cbColor">Color</label>
             <select class="form-input" id="cbColor"><option value="">All</option></select>
           </div>
@@ -136,13 +136,21 @@
             <label class="form-label" for="cbType">Type</label>
             <select class="form-input" id="cbType"><option value="">All</option></select>
           </div>
-          <div class="filter-group" data-game-filter="optcg">
+          <div class="filter-group" data-game-filter="optcg cyberpunk">
             <label class="form-label" for="cbCost">Cost</label>
             <select class="form-input" id="cbCost"><option value="">Any</option></select>
           </div>
           <div class="filter-group" data-game-filter="optcg">
             <label class="form-label" for="cbAttribute">Attribute</label>
             <select class="form-input" id="cbAttribute"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="cyberpunk">
+            <label class="form-label" for="cbTag">Tag</label>
+            <select class="form-input" id="cbTag"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="cyberpunk">
+            <label class="form-label" for="cbRam">RAM</label>
+            <select class="form-input" id="cbRam"><option value="">Any</option></select>
           </div>
           <div class="filter-group" data-game-filter="pokemon">
             <label class="form-label" for="cbSupertype">Supertype</label>
@@ -215,8 +223,9 @@
                 <option value="custom-3x3">Custom (3x3)</option>
                 <option value="release">Release order</option>
                 <option value="rarity">Rarity</option>
-                <option value="color"     data-game-opt="optcg">Color</option>
-                <option value="cost"      data-game-opt="optcg">Cost</option>
+                <option value="color"     data-game-opt="optcg cyberpunk">Color</option>
+                <option value="cost"      data-game-opt="optcg cyberpunk">Cost</option>
+                <option value="ram"       data-game-opt="cyberpunk">RAM</option>
                 <option value="ptype"     data-game-opt="pokemon">Type</option>
                 <option value="hp"        data-game-opt="pokemon">HP</option>
                 <option value="supertype" data-game-opt="pokemon">Supertype</option>

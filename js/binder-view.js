@@ -50,7 +50,9 @@
   const RARITY_ORDER = [
     // One Piece (rarest first; leaders + promos grouped at the end)
     'SEC', 'SP CARD', 'TR', 'SR', 'R', 'UC', 'C', 'L', 'P',
-    // Pokémon
+    // Cyberpunk (rarest first)
+    'Epic',
+    // Pokémon (+ Cyberpunk shares Rare/Uncommon/Common)
     'Rare Secret', 'Rare Holo EX', 'Rare Holo', 'Rare', 'Uncommon', 'Common', 'Promo'
   ];
   const POKEMON_SUBTYPES = [
@@ -63,6 +65,20 @@
     'Illustration Rare','Special Illustration Rare','Hyper Rare','Double Rare','Promo'
   ];
   const POKEMON_HP_BUCKETS = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300];
+
+  // Cyberpunk TCG: color + card_type, classifications (tags, the types[] column),
+  // RAM (deck-building stat), rarities. See scripts/import_cyberpunk_cards.py.
+  const CYBERPUNK_COLORS   = ['Red', 'Blue', 'Green', 'Yellow'];
+  const CYBERPUNK_TYPES    = ['Legend', 'Unit', 'Gear', 'Program'];
+  const CYBERPUNK_RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic'];
+  const CYBERPUNK_RAM      = [1, 2, 3, 4, 5, 6];
+  const CYBERPUNK_TAGS = [
+    '6th Street', 'Aldecado', 'Arasaka', 'Braindance', 'Corpo', 'Cyberware', 'Doll',
+    'Drone', 'Extreme', 'Ganger', 'Maelstrom', 'Merc', 'Militech', 'Mox', 'Mystic',
+    'NCPD', 'Netrunner', 'Nomad', 'Quickhack', 'Raffen Shiv', 'Ripperdoc', 'Rocker',
+    'Samurai', 'Scavenger', 'Trauma Team', 'Tyger Claws', 'Valentino', 'Vehicle',
+    'Voodoo Boys', 'Weapon', 'Zetatech'
+  ];
 
   async function init() {
     const me = await window.PK.currentUser();
@@ -128,7 +144,7 @@
     }
     canEdit = isOwner || isCollab;
     sleeveImageUrl = binder.sleeve_image_url || null;
-    binderCategory = binder.category === 'pokemon' ? 'pokemon' : 'optcg';
+    binderCategory = ['pokemon', 'cyberpunk'].includes(binder.category) ? binder.category : 'optcg';
     binderFlair = binder.flair || null;
     applyGameUI(binderCategory);
     const profile = binder;  // alias for the rest of the function
@@ -198,7 +214,7 @@
   }
 
   const FLAIR_LABELS = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' };
-  const CATEGORY_LABELS = { optcg: 'OPTCG', pokemon: 'Pokémon' };
+  const CATEGORY_LABELS = { optcg: 'OPTCG', pokemon: 'Pokémon', cyberpunk: 'Cyberpunk' };
 
   function renderCategory(category) {
     const el = document.getElementById('binderCategory');
@@ -336,6 +352,10 @@
       currentListings = allListings.slice().sort((a, b) =>
         (a.cards?.cost ?? 99) - (b.cards?.cost ?? 99) ||
         String(a.card_code).localeCompare(b.card_code));
+    } else if (mode === 'ram') {
+      currentListings = allListings.slice().sort((a, b) =>
+        (a.cards?.ram ?? 99) - (b.cards?.ram ?? 99) ||
+        String(a.card_code).localeCompare(b.card_code));
     } else if (mode === 'rarity') {
       // Group by rarity (rarest first); within each rarity, newest release first.
       const rank = c => { const i = RARITY_ORDER.indexOf(c?.cards?.rarity); return i < 0 ? 99 : i; };
@@ -394,7 +414,7 @@
     if (sel) {
       sel.style.display = '';
       // Default the dropdown to whichever custom layout the binder currently uses.
-      const NON_CUSTOM_SORTS = ['release','rarity','color','cost','ptype','hp','supertype'];
+      const NON_CUSTOM_SORTS = ['release','rarity','color','cost','ram','ptype','hp','supertype'];
       if (!NON_CUSTOM_SORTS.includes(aestheticsSortMode)) {
         aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
       }
@@ -577,7 +597,7 @@
       cbDebounceTimer = setTimeout(filterBinderListings, 250);
     });
     document.getElementById('cbClear').addEventListener('click', () => {
-      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
+      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
         document.getElementById(id).value = '';
       });
       filterBinderListings();
@@ -597,21 +617,25 @@
   }
 
   // Toggle filter groups and sort-options that are scoped to one game.
-  // Elements with data-game-filter / data-game-opt that don't match the
-  // current game are hidden so they neither render nor get read by the
-  // load/filter code paths (which check the input value, which stays '').
+  // data-game-filter / data-game-opt hold a space-separated list of games (a
+  // filter shared by >1 game, e.g. "optcg cyberpunk"); elements whose list
+  // doesn't include the current game are hidden so they neither render nor get
+  // read by the load/filter code paths (which check the input value, '' = off).
   function applyGameUI(category) {
+    const gamesOf = v => (v || '').split(/\s+/).filter(Boolean);
     document.querySelectorAll('[data-game-filter]').forEach(el => {
-      el.style.display = el.dataset.gameFilter === category ? '' : 'none';
+      el.style.display = gamesOf(el.dataset.gameFilter).includes(category) ? '' : 'none';
     });
     document.querySelectorAll('#aestheticsSort [data-game-opt]').forEach(opt => {
-      opt.hidden = opt.dataset.gameOpt !== category;
+      opt.hidden = !gamesOf(opt.dataset.gameOpt).includes(category);
     });
     // Update the Search placeholder so the example card-code matches.
     const searchInput = document.getElementById('cbName');
     if (searchInput) {
       searchInput.placeholder = category === 'pokemon'
         ? 'Pikachu, sv1-1, …'
+        : category === 'cyberpunk'
+        ? 'V, Adam Smasher, cb-…'
         : 'Luffy, OP01-001, …';
     }
   }
@@ -663,6 +687,13 @@
       appendOptions(document.getElementById('cbSubtype'),   POKEMON_SUBTYPES);
       appendOptions(document.getElementById('cbHp'),        POKEMON_HP_BUCKETS);
       appendOptions(document.getElementById('cbRarity'),    POKEMON_RARITIES);
+    } else if (binderCategory === 'cyberpunk') {
+      appendOptions(document.getElementById('cbColor'),  CYBERPUNK_COLORS);
+      appendOptions(document.getElementById('cbType'),   CYBERPUNK_TYPES);
+      appendOptions(document.getElementById('cbCost'),   Array.from({ length: 9 }, (_, i) => i + 1));
+      appendOptions(document.getElementById('cbTag'),    CYBERPUNK_TAGS);
+      appendOptions(document.getElementById('cbRam'),    CYBERPUNK_RAM);
+      appendOptions(document.getElementById('cbRarity'), CYBERPUNK_RARITIES);
     } else {
       appendOptions(document.getElementById('cbColor'),     OPTCG_COLORS);
       appendOptions(document.getElementById('cbType'),      OPTCG_TYPES);
@@ -674,7 +705,7 @@
 
   function wireBrowserFilters() {
     const onChange = () => { loadCards(); filterBinderListings(); };
-    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
+    ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
       document.getElementById(id).addEventListener('change', onChange);
     });
     document.getElementById('cbName').addEventListener('input', () => {
@@ -682,7 +713,7 @@
       cbDebounceTimer = setTimeout(onChange, 250);
     });
     document.getElementById('cbClear').addEventListener('click', () => {
-      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
+      ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
         document.getElementById(id).value = '';
       });
       onChange();
@@ -698,10 +729,12 @@
     const ctype  = document.getElementById('cbType').value;
     const rarity = document.getElementById('cbRarity').value;
 
-    // Game-aware select list so Pokémon-only columns come back when
-    // we need them for client-side filtering / display.
+    // Game-aware select list so each game's columns come back for
+    // client-side filtering / display.
     const projection = binderCategory === 'pokemon'
       ? 'card_code, name, series, type, types, supertype, subtypes, hp, rarity, image_url'
+      : binderCategory === 'cyberpunk'
+      ? 'card_code, name, series, color, type, cost, ram, types, rarity, image_url'
       : 'card_code, name, series, color, type, cost, attribute, rarity, image_url';
 
     let q = window.sb.from('cards')
@@ -726,6 +759,16 @@
       if (supertype) q = q.eq('supertype', supertype);
       if (subtype)   q = q.contains('subtypes', [subtype]);
       if (hpMin)     q = q.gte('hp', parseInt(hpMin, 10));
+    } else if (binderCategory === 'cyberpunk') {
+      const color = document.getElementById('cbColor').value;
+      const cost  = document.getElementById('cbCost').value;
+      const tag   = document.getElementById('cbTag').value;
+      const ram   = document.getElementById('cbRam').value;
+      if (color)       q = q.eq('color', color);
+      if (ctype)       q = q.eq('type', ctype);                 // Legend/Unit/Gear/Program
+      if (cost !== '') q = q.eq('cost', parseInt(cost, 10));
+      if (tag)         q = q.contains('types', [tag]);          // classifications text[]
+      if (ram !== '')  q = q.eq('ram', parseInt(ram, 10));
     } else {
       const color     = document.getElementById('cbColor').value;
       const cost      = document.getElementById('cbCost').value;
@@ -930,7 +973,7 @@
       let cardsByCode = {};
       if (codes.length) {
         const { data: cards } = await window.sb.from('cards')
-          .select('card_code, name, image_url, image_url_lg, color, type, cost, attribute, rarity, series, release_order, supertype, subtypes, types, hp')
+          .select('card_code, name, image_url, image_url_lg, color, type, cost, attribute, rarity, series, release_order, supertype, subtypes, types, hp, ram')
           .eq('game', binderCategory)
           .in('card_code', codes);
         (cards || []).forEach(c => { cardsByCode[c.card_code] = c; });
@@ -1383,6 +1426,14 @@
         if (supertype && c.supertype !== supertype) return false;
         if (subtype && !(Array.isArray(c.subtypes) && c.subtypes.includes(subtype))) return false;
         if (hpMin && (c.hp == null || c.hp < parseInt(hpMin, 10))) return false;
+      } else if (binderCategory === 'cyberpunk') {
+        const tag = document.getElementById('cbTag').value;
+        const ram = document.getElementById('cbRam').value;
+        if (color && c.color !== color) return false;
+        if (ctype && c.type !== ctype) return false;
+        if (cost !== '' && c.cost !== parseInt(cost, 10)) return false;
+        if (tag && !(Array.isArray(c.types) && c.types.includes(tag))) return false;  // classifications
+        if (ram !== '' && c.ram !== parseInt(ram, 10)) return false;
       } else {
         if (color && !((c.color || '').includes(color))) return false;
         if (ctype && c.type !== ctype) return false;

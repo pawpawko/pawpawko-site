@@ -20,7 +20,7 @@
     function readLastGame() {
       try {
         const v = localStorage.getItem(LAST_GAME_KEY);
-        return v === 'pokemon' || v === 'optcg' ? v : 'optcg';
+        return v === 'pokemon' || v === 'optcg' || v === 'cyberpunk' ? v : 'optcg';
       } catch (e) { return 'optcg'; }
     }
     function writeLastGame(g) {
@@ -74,7 +74,7 @@
         // enforces "only one trade/wishlist binder per user per game".
         if (error.code === '23505' && /one_(trade|wishlist)_per_user_game/.test(error.message || '')) {
           const flairName = flair === 'wishlist' ? 'wishlist' : 'trade';
-          const gameName = category === 'pokemon' ? 'Pokémon' : 'OPTCG';
+          const gameName = { pokemon: 'Pokémon', cyberpunk: 'Cyberpunk', optcg: 'OPTCG' }[category] || 'OPTCG';
           errEl.textContent = `You already have a ${flairName} binder for ${gameName}. Only one per game is allowed.`;
         } else {
           errEl.textContent = error.message;
@@ -90,9 +90,9 @@
     });
   }
 
-  // Display order: OPTCG group first, then Pokémon; created_at order within.
-  const GAME_ORDER = ['optcg', 'pokemon'];
-  const GAME_LABEL = { optcg: 'One Piece TCG', pokemon: 'Pokémon' };
+  // Display order: OPTCG group first, then Pokémon, then Cyberpunk; created_at order within.
+  const GAME_ORDER = ['optcg', 'pokemon', 'cyberpunk'];
+  const GAME_LABEL = { optcg: 'One Piece TCG', pokemon: 'Pokémon', cyberpunk: 'Cyberpunk TCG' };
 
   async function loadBinders(userId) {
     const wrap = document.getElementById('bindersGroups');
@@ -147,7 +147,7 @@
       const flair = b.flair || 'trade';
       const flairLabel = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
       const cat = b.category || 'optcg';
-      const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon' }[cat] || 'OPTCG';
+      const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon', cyberpunk: 'Cyberpunk' }[cat] || 'OPTCG';
       const count = countById[b.id] || 0;
       const sleeve = b.sleeve_image_url
         ? `<div class="binder-card-sleeve" style="background-image:url(${escapeAttr(b.sleeve_image_url)})"></div>`

@@ -437,7 +437,7 @@ create table if not exists public.binders (
 create index if not exists binders_user_id_idx on public.binders(user_id);
 
 alter table public.binders add column if not exists flair text not null default 'trade';
-alter table public.binders add column if not exists category text not null default 'optcg' check (category in ('optcg','pokemon'));
+alter table public.binders add column if not exists category text not null default 'optcg' check (category in ('optcg','pokemon','cyberpunk'));
 alter table public.binders add column if not exists layout text not null default '4x3' check (layout in ('4x3','3x3'));
 
 -- At most one Trade Binder and one Wishlist Binder per user per game.
