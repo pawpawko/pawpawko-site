@@ -6,24 +6,63 @@
    (faster than @import, which blocks until the CSS is parsed). */
 
 :root {
-  --bg-primary: #181622;
-  --bg-secondary: #201c33;
-  --bg-card: #2a2542;
-  --bg-card-hover: #322e50;
-  --accent: #c9956a;
-  --accent-light: #ddb896;
-  --accent-muted: #8a6448;
-  --text-primary: #ede8df;
-  --text-secondary: #c4b9ad;
-  --text-muted: #988e85;
-  --border: rgba(255,255,255,0.08);
-  --border-accent: rgba(201, 149, 106, 0.3);
+  /* Festival Gold — warm cream + marigold, light theme (2026-06-26) */
+  --bg-primary: #fbf3e2;
+  --bg-secondary: #fffdf8;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fdf6e9;
+  --accent: #f0a818;
+  --accent-light: #ffc859;
+  --accent-muted: #b67d09;   /* darker accent — readable for small text/links on the light bg */
+  --accent-2: #9d7be0;       /* lavender pop (badges/secondary) */
+  --on-accent: #3a2c14;      /* text colour that sits ON a filled accent (was --bg-primary in the dark theme) */
+  --text-primary: #3a2c14;
+  --text-secondary: #6b5a3c;
+  --text-muted: #9c8c6e;
+  --border: rgba(58,44,20,0.12);
+  --border-accent: rgba(240,168,24,0.45);
+  /* Decks-page toolbar dropdowns only (import/export + cost-of-deck) — faded
+     lavender matching the deck bench (user choice 2026-06-27). Nav/filter
+     dropdowns keep the plain card surface. */
+  --menu-bg: #f0eafb;
+  --menu-text: #3a2c14;
+  --menu-hover: #e3d5f6;
+  --menu-border: rgba(157,123,224,.5);
+  --nav-scrolled-bg: rgba(255,253,248,0.9);
   --radius: 4px;
   --radius-lg: 8px;
   --transition: all 0.3s ease;
-  --font-serif: 'Cinzel', Georgia, serif;
+  --font-display: 'Cinzel', Georgia, serif;  /* wordmark + binder/deck names ONLY */
+  --font-serif: 'Lora', Georgia, serif;      /* UI chrome — Lora (bolded on controls) */
   --font-body: 'Lora', Georgia, serif;
   --max-width: 1200px;
+}
+
+/* ============================================
+   DARK MODE — "Charcoal Festival" (variant C, chosen 2026-06-27)
+   Opt-in via html[data-theme="dark"]; default stays the light Festival Gold.
+   ============================================ */
+html[data-theme="dark"] {
+  --bg-primary: #181613;
+  --bg-secondary: #201d19;
+  --bg-card: #26231e;
+  --bg-card-hover: #2f2b25;
+  --accent: #f0a818;
+  --accent-light: #ffc859;
+  --accent-muted: #e0a836;   /* brightened — readable on dark */
+  --accent-2: #b79bf0;       /* brightened lavender for dark */
+  --on-accent: #241d10;      /* dark text still sits on the bright gold */
+  --text-primary: #f2ece0;
+  --text-secondary: #cabfa9;
+  --text-muted: #998f7d;
+  --border: rgba(242,236,224,0.11);
+  --border-accent: rgba(240,168,24,0.42);
+  /* dropdowns match the deck bench's faded lavender in dark mode too */
+  --menu-bg: #2b2436;
+  --menu-text: #f2ece0;
+  --menu-hover: #352b44;
+  --menu-border: rgba(183,155,240,.45);
+  --nav-scrolled-bg: rgba(20,18,15,0.92);
 }
 
 *, *::before, *::after {
@@ -51,7 +90,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-serif);
-  font-weight: 500;
+  font-weight: 700;
   line-height: 1.2;
   color: var(--text-primary);
 }
@@ -165,7 +204,7 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 .nav.scrolled {
-  background: rgba(24, 22, 34, 0.95);
+  background: var(--nav-scrolled-bg);
   backdrop-filter: blur(10px);
   padding: 1rem 0;
   border-bottom: 1px solid var(--border);
@@ -178,7 +217,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .nav-logo {
   flex: 1 1 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 1.5rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -205,6 +244,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .nav-links a {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.95rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -271,6 +311,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .nav-mobile a {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 2rem;
   color: var(--text-primary);
   letter-spacing: 0.1em;
@@ -307,8 +348,9 @@ img { max-width: 100%; height: auto; display: block; }
   display: inline-block;
   padding: 0.9rem 2.5rem;
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.85rem;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   border: 1px solid var(--accent);
   color: var(--accent);
@@ -320,18 +362,18 @@ img { max-width: 100%; height: auto; display: block; }
 
 .btn:hover {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
 }
 
 .btn-filled {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
 }
 
 .btn-filled:hover {
   background: var(--accent-light);
   border-color: var(--accent-light);
-  color: var(--bg-primary);
+  color: var(--on-accent);
 }
 
 /* ============================================
@@ -365,6 +407,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .hero-eyebrow {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.8rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -415,6 +458,7 @@ img { max-width: 100%; height: auto; display: block; }
 .section-header .eyebrow,
 .eyebrow {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -838,6 +882,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .form-label {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -912,7 +957,7 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 .footer-logo {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 1.5rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1119,11 +1164,13 @@ body.binder-editing .share-popover { display: none !important; }
 .binder-card-sleeve-default { color: var(--text-muted); opacity: 0.4; }
 .binder-card-body { padding: 1rem 1.25rem; }
 .binder-card-name {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 1rem;
   letter-spacing: 0.04em;
   margin-bottom: 0.25rem;
 }
+/* Deck tile names keep the Cinzel wordmark feel, same as binder names. */
+.deck-tile-name { font-family: var(--font-display); }
 .binder-card-desc {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -1131,6 +1178,7 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .binder-card-count {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -1269,7 +1317,7 @@ body.binder-editing .share-popover { display: none !important; }
 .filter-pill-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .filter-pill-toggle.active {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -1328,6 +1376,7 @@ body.binder-editing .share-popover { display: none !important; }
 
 .results-count {
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.8rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -1354,11 +1403,11 @@ body.binder-editing .share-popover { display: none !important; }
 }
 .binder-row-link:hover { color: var(--text-primary); }
 .binder-row-title {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 1.1rem;
   letter-spacing: 0.04em;
 }
-.binder-row-title em { font-style: italic; color: var(--accent-light); }
+.binder-row-title em { font-style: italic; color: var(--accent-muted); }
 .binder-row-header {
   display: flex;
   justify-content: space-between;
@@ -1551,7 +1600,7 @@ body.binder-editing .share-popover { display: none !important; }
   position: absolute;
   top: 0.5rem; right: 0.5rem;
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
   font-family: var(--font-serif);
   font-size: 0.85rem;
   padding: 0.15rem 0.5rem;
@@ -1722,6 +1771,7 @@ body.binder-editing .share-popover { display: none !important; }
 .binder-flair-chip {
   display: inline-block;
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.7rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2145,7 +2195,7 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
   padding: 0;
 }
 .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.page-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+.page-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* Top page-flip bar mirrors the bottom one, sitting just above the grid. */
@@ -2248,7 +2298,7 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 .bl-counter {
   position: absolute; bottom: 1.1rem; left: 50%; transform: translateX(-50%);
   color: rgba(255, 255, 255, 0.7);
-  font-family: var(--font-serif); font-size: 0.8rem; letter-spacing: 0.1em;
+  font-family: var(--font-serif); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.1em;
 }
 .bl-nav {
   position: absolute; top: 50%; transform: translateY(-50%);
@@ -2566,7 +2616,7 @@ body.binder-editing .binder-name-edit-btn { display: inline-flex; }
 }
 .nav-auth-btn:hover {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--on-accent);
 }
 
 /* Profile icon + dropdown (signed in) */

@@ -134,6 +134,61 @@ function wireProfileDropdown() {
 wireProfileDropdown();
 renderAuthButton();
 
+// ---- Dark mode toggle ----
+// Variant C "Charcoal Festival". The pref is applied pre-paint by the inline
+// <head> script (no flash); here we inject the toggle into the profile menu and
+// keep <html data-theme>, localStorage, and the control label in sync.
+const THEME_KEY = 'pawpaw:theme';
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+function applyTheme(theme) {
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+  // Reflect state on the visual switch (gold + knob-right when dark).
+  document.querySelectorAll('.theme-toggle').forEach((t) => {
+    t.setAttribute('aria-checked', String(theme === 'dark'));
+  });
+}
+function injectThemeToggle() {
+  const dd = document.getElementById('navProfileDropdown');
+  if (!dd || dd.querySelector('.theme-toggle')) return;
+
+  // Switch styling injected here so it doesn't depend on css/styles.css.
+  if (!document.getElementById('themeToggleStyle')) {
+    const st = document.createElement('style');
+    st.id = 'themeToggleStyle';
+    st.textContent =
+      '.theme-toggle{display:flex;align-items:center;justify-content:space-between;gap:1rem;}' +
+      '.theme-switch{position:relative;flex:none;width:40px;height:20px;border-radius:999px;background:rgba(127,127,127,.45);transition:background .2s ease;}' +
+      '.theme-toggle[aria-checked="true"] .theme-switch{background:var(--accent);}' +
+      '.theme-switch-knob{position:absolute;top:3px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.45);transition:transform .2s ease;}' +
+      '.theme-toggle[aria-checked="true"] .theme-switch-knob{transform:translateX(20px);}';
+    document.head.appendChild(st);
+  }
+
+  const divider = document.createElement('div');
+  divider.className = 'nav-profile-divider';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'nav-profile-menu-item theme-toggle';
+  btn.setAttribute('role', 'switch');
+  btn.setAttribute('aria-checked', 'false');
+  btn.setAttribute('aria-label', 'Dark mode');
+  btn.innerHTML = '<span class="theme-toggle-label">Dark Mode</span><span class="theme-switch" aria-hidden="true"><span class="theme-switch-knob"></span></span>';
+  // Insert above the existing divider that precedes "Log Out".
+  const firstDivider = dd.querySelector('.nav-profile-divider');
+  dd.insertBefore(divider, firstDivider || null);
+  dd.insertBefore(btn, firstDivider || null);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  });
+  applyTheme(currentTheme());
+}
+injectThemeToggle();
+
 // ---- Notifications (bell + dropdown) ----
 // Injected into the nav for signed-in users so it lives on every page without
 // editing each one. Shows binder-share invites with Accept/Decline, plus info

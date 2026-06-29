@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <script>try{if(localStorage.getItem('pawpaw:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
   <style>
@@ -53,10 +54,10 @@
     .deck-section-title { font-family:Cinzel, serif; font-size:.9rem; letter-spacing:.06em; text-transform:uppercase; opacity:.85; margin:1.4rem 0 .4rem; }
     .deck-toolbar { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-top:1rem; }
     .deck-io-wrap { position:relative; }
-    .deck-io-menu { position:absolute; top:calc(100% + 6px); left:0; min-width:210px; background:#2a2542; border:1px solid var(--border,#3a3344); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.45); padding:.3rem; z-index:60; display:none; }
+    .deck-io-menu { position:absolute; top:calc(100% + 6px); left:0; min-width:210px; background:var(--menu-bg); border:1px solid var(--menu-border); border-radius:0; box-shadow:0 6px 18px rgba(0,0,0,.25); padding:.3rem; z-index:60; display:none; }
     .deck-io-menu.open { display:block; }
-    .deck-io-item { display:block; width:100%; text-align:left; background:none; border:none; border-radius:6px; padding:.5rem .65rem; font-family:inherit; font-size:.78rem; color:var(--text-secondary,#c4b9ad); cursor:pointer; transition:var(--transition); }
-    .deck-io-item:hover { background:var(--bg-card-hover,#322e50); color:var(--text,#fff); }
+    .deck-io-item { display:block; width:100%; text-align:left; background:none; border:none; border-radius:0; padding:.5rem .65rem; font-family:inherit; font-size:.78rem; color:var(--menu-text); cursor:pointer; transition:var(--transition); }
+    .deck-io-item:hover { background:var(--menu-hover); color:var(--menu-text); }
     .name-row { display:flex; gap:.5rem; align-items:center; }
     .name-row .form-input { flex:1; min-width:0; }
     .eye-btn { width:34px; height:34px; flex:none; border-radius:8px; border:1px solid var(--border,#3a3344); background:transparent; color:inherit; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; opacity:.7; transition:opacity .15s; padding:0; }
@@ -200,8 +201,12 @@
     .deck-main.bench-side .deck-bench-toggle-row { margin-top:0; }
     .deck-main.bench-side .deck-bench-grid { grid-template-columns:repeat(3, minmax(0,1fr)); }
     @media (max-width:860px) { .deck-main.bench-side { display:block; } .deck-main.bench-side .deck-bench-area { width:auto; } }
-    .deck-bench { margin-top:.6rem; padding:.75rem .85rem 1rem; background:rgba(0,0,0,.28); border:1px dashed var(--border,#3a3344); border-radius:10px; }
-    .deck-bench-head { font-size:.72rem; color:var(--text-muted,#988e85); margin-bottom:.6rem; line-height:1.45; }
+    /* Bench uses the theme's lavender (accent-2) so it reads as a distinct staging
+       area, separate from the gold-dominant deck UI. Light wash in light mode, a
+       muted plum surface in dark mode; text stays on --text-secondary either way. */
+    .deck-bench { margin-top:.6rem; padding:.75rem .85rem 1rem; background:#f0eafb; border:1px dashed rgba(157,123,224,.5); border-radius:10px; }
+    html[data-theme="dark"] .deck-bench { background:#2b2436; border-color:rgba(183,155,240,.45); }
+    .deck-bench-head { font-size:.72rem; color:var(--text-secondary,#6b5a3c); margin-bottom:.6rem; line-height:1.45; }
     .deck-bench-grid { opacity:.92; }
     /* "Send owned copies to trade binder" action on benched owned cards. */
     .bench-tile .bench-trade { color:var(--accent,#d8b751); border-color:var(--accent,#d8b751); font-size:.9rem; }
@@ -218,7 +223,7 @@
     .auth-error.cb-note { color:#7ec96a; }
     @keyframes cbFlash { 0%{ opacity:.25; } 35%{ opacity:1; } 100%{ opacity:1; } }
     .cb-flash { animation:cbFlash .4s ease; }
-    .deck-bench-empty { grid-column:1 / -1; font-size:.8rem; color:var(--text-muted,#988e85); text-align:center; padding:1.4rem 1rem; border:1px dashed var(--border,#3a3344); border-radius:8px; }
+    .deck-bench-empty { grid-column:1 / -1; font-size:.8rem; color:var(--text-secondary,#6b5a3c); text-align:center; padding:1.4rem 1rem; border:1px dashed rgba(157,123,224,.5); border-radius:8px; }
     .deck-card-tile.dragging { opacity:.4; }
     .deck-card-tile.drop-target { outline:2px dashed var(--accent,#c9956a); outline-offset:2px; }
     .deck-card-tile img[draggable="true"] { cursor:grab; }
@@ -320,7 +325,6 @@
               <button type="button" class="pill-choice-btn active" data-value="standard">Standard</button>
               <button type="button" class="pill-choice-btn" data-value="eternal">Eternal</button>
             </div>
-            <p class="text-muted-line" style="margin-top:.35rem;">Standard follows the current rotation (Block 1 is out). Eternal allows every card ever printed, minus bans.</p>
           </div>
           <div class="form-group">
             <label class="form-label" for="ndImport">Decklist (optional)</label>
@@ -392,13 +396,13 @@
                 </div>
               </div>
               <div class="deck-io-wrap">
-                <button class="btn btn-sm" id="edPriceBtn" title="Price this deck" aria-haspopup="true" aria-expanded="false">$ ▾</button>
+                <button class="btn btn-sm" id="edPriceBtn" title="Price this deck" aria-label="Price this deck" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 32 32" fill="none" width="18" height="18" style="vertical-align:middle" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip_money)"><path d="M31 6V11V16V21V26V31H12C18.07 31 23 26.07 23 20C23 13.93 18.07 9 12 9C10.23 9 8.56 9.42 7.08 10.16L7 10V1H31V6Z" fill="#668077"/><path d="M12 9C18.07 9 23 13.93 23 20C23 26.07 18.07 31 12 31C5.93 31 1 26.07 1 20C1 15.7 3.48 11.97 7.08 10.16C8.56 9.42 10.23 9 12 9Z" fill="#FFC44D"/><path d="M15 17C15 15.343 13.657 14 12 14M12 14C10.343 14 9 15.343 9 17C9 18.657 10.343 20 12 20C13.657 20 15 21.343 15 23C15 24.657 13.657 26 12 26M12 14V13M12 26C10.343 26 9 24.657 9 23M12 26V27M22 31H31V29M25 26H31V24M26 21H31V19M26 16H31V14M23 11H31V9M10 6H31V1H7V6M23 20C23 13.926 18.074 9 12 9C5.926 9 1 13.926 1 20C1 26.074 5.926 31 12 31C18.074 31 23 26.074 23 20Z" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g><defs><clipPath id="clip_money"><rect width="32" height="32" fill="white"/></clipPath></defs></svg> ▾</button>
                 <div class="deck-io-menu" id="edPriceMenu" role="menu">
                   <button class="deck-io-item" id="edCostDeckBtn" type="button" role="menuitem">Cost of deck</button>
                   <button class="deck-io-item" id="edCostFinishBtn" type="button" role="menuitem">Cost to Finish</button>
                 </div>
               </div>
-              <button class="btn btn-sm" id="edStatsBtn">Stats</button>
+              <button class="btn btn-sm" id="edStatsBtn" title="Stats" aria-label="Stats"><svg viewBox="0 0 32 32" fill="none" width="18" height="18" style="vertical-align:middle" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip_stats)"><path d="M31 8V30C31 30.55 30.55 31 30 31H26V7H30C30.55 7 31 7.45 31 8ZM22 7V31H18V13H14V31H10V19H6V31H2C1.45 31 1 30.55 1 30V8C1 7.45 1.45 7 2 7H22Z" fill="#FFE6EA"/><path d="M26 7V31H22V7V1H26V7Z" fill="#FFC44D"/><path d="M14 31H18V13H14V31Z" fill="#668077"/><path d="M6 31H10V19H6V31Z" fill="#668077"/><path d="M29 7H30C30.553 7 31 7.447 31 8V30C31 30.553 30.553 31 30 31H2C1.447 31 1 30.553 1 30V8C1 7.447 1.447 7 2 7H19M6 28V19H10V28M14 28V13H18V28M22 28V1H26V28" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g><defs><clipPath id="clip_stats"><rect width="32" height="32" fill="white"/></clipPath></defs></svg></button>
             </div>
 
             <p class="auth-error" id="edError"></p>
@@ -417,7 +421,6 @@
                   <button class="bench-dock-btn" id="edBenchSideBtn" type="button" aria-pressed="false" title="Dock bench to the side"><svg class="dock-ico dock-ico-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 21h22V3H1zM22 4v16h-3V4zM2 4h16v16H2z"/></svg><svg class="dock-ico dock-ico-bottom" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 21h22V3H1zM2 4h20v12H2zm0 13h20v3H2z"/></svg></button>
                 </div>
                 <div class="deck-bench" id="edBenchSection" style="display:none;">
-                  <div class="deck-bench-head">Bench — extras, not counted in the deck. Drag a card onto a deck card to swap, or onto the deck to add.</div>
                   <div class="deck-cards-grid deck-bench-grid" id="edBenchGrid"></div>
                 </div>
               </div>
@@ -460,7 +463,6 @@
             <button class="btn" id="cbClear">Clear</button>
             <label class="dl-owned cb-owned">
               <input type="checkbox" id="cbOwned"> Owned
-              <span class="owned-tip">Marks every card you add as already owned, so it won't show as missing or get pushed to your wishlist.</span>
             </label>
           </div>
           <p class="auth-error" id="cbError"></p>
@@ -484,7 +486,6 @@
           <div class="dl-action-row" id="dlActionRow">
             <label class="dl-owned" id="dlOwnedWrap">
               <input type="checkbox" id="dlOwned"> I own all these cards
-              <span class="owned-tip">Imports every card already marked as owned, so the deck won't list them as missing or push them to your wishlist.</span>
             </label>
             <button class="btn btn-filled" id="dlAction">Copy</button>
           </div>
@@ -497,7 +498,6 @@
         <div class="cb-box" style="max-width:560px;">
           <button class="cb-close" id="pcClose" aria-label="Close">✕</button>
           <h3 style="margin-top:0;" id="pcTitle">Cost to Finish</h3>
-          <p class="text-muted-line" id="pcSub">The cards you still need (deck quantity minus what you own), at each card's cheapest single price.</p>
           <div id="pcBody"></div>
           <div class="pc-total" id="pcTotal"></div>
           <p class="text-muted-line" id="pcFoot" style="margin-top:.6rem;"></p>
@@ -509,7 +509,6 @@
         <div class="cb-box" style="max-width:560px;">
           <button class="cb-close" id="stClose" aria-label="Close">✕</button>
           <h3 style="margin-top:0;">Deck Stats</h3>
-          <p class="text-muted-line">Based on the 50-card deck — leader and bench excluded.</p>
           <div id="stBody"></div>
         </div>
       </div>

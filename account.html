@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <script>try{if(localStorage.getItem('pawpaw:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
 </head>
@@ -148,7 +149,7 @@
               <button type="button" class="btn name-check-btn" data-name-check="pfName" data-status="pfNameStatus">Check</button>
             </div>
             <p class="form-hint">
-              Tip: use your local nickname so other players recognize you. Changes are limited to once every 90 days.
+              Changes are limited to once every 90 days.
               <span class="name-lock-msg" id="pfNameLock" style="display:none;"></span>
             </p>
             <p class="form-hint name-check-status" id="pfNameStatus" aria-live="polite"></p>
@@ -160,7 +161,6 @@
           <div class="form-group">
             <label class="form-label" for="pfCity">City</label>
             <select class="form-input" id="pfCity"></select>
-            <p class="form-hint">Used to pre-fill the binder search filters when you sign in.</p>
           </div>
           <div class="form-group" id="pfBoroughGroup">
             <label class="form-label">Preferred Boroughs</label>

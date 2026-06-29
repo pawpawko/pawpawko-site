@@ -1598,7 +1598,7 @@
             + `<div class="st-tdetail" hidden style="padding:.1rem .6rem .7rem 1.6rem;color:var(--text-muted,#988e85);font-size:.82rem">${trigHits.map(h => `${esc(h.name)} <span class="pc-code">×${h.qty}</span>`).join(' · ')}</div>`
           : '<p class="text-muted-line">No <span class="pc-code">[Trigger]</span> cards in the deck.</p>'}
       </div>`;
-    body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + triggers + costCurve + searchSection;
+    body.innerHTML = `<p class="text-muted-line">${total} card${total === 1 ? '' : 's'} in the deck${total !== 50 ? ' (not 50 yet)' : ''}.</p>` + counters + triggers + costCurve + searchHtml;
 
     // Expand/collapse each searcher's target breakdown.
     body.querySelectorAll('.st-srow').forEach(tr => {
@@ -2172,9 +2172,6 @@
   async function openPrices(mode) {
     const isDeck = mode === 'deck';
     $('pcTitle').textContent = isDeck ? 'Cost of Deck' : 'Cost to Finish';
-    $('pcSub').textContent = isDeck
-      ? 'The whole deck — leader plus every card at full quantity — at each card’s cheapest single price.'
-      : 'The cards you still need (deck quantity minus what you own), at each card’s cheapest single price.';
     $('pcOverlay').style.display = '';
     $('pcTotal').textContent = '';
     $('pcFoot').textContent = '';
