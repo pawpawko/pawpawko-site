@@ -36,20 +36,19 @@
 
   // ---- Signed-out interactive demo ----
   let DEMO = false;                 // true when no user: real editor, no DB writes
-  // Ko's GU Monkey.D.Luffy deck as [code, quantity, owned]; five cards are left
-  // under-owned for the demo (OP16-032 all 4 missing, the rest partially).
+  // Ko's GU Monkey.D.Luffy deck as [code, quantity, owned] — 50 cards, 37 owned,
+  // 13 missing across five cards (OP16-032 all 4 missing, the rest partial).
   const DEMO_DECK = [
     ['OP05-057', 2, 2], ['OP11-061', 2, 2], ['OP13-040', 2, 2], ['OP15-032', 2, 2],
     ['OP16-026', 3, 1], ['OP16-027', 2, 2], ['OP16-032', 4, 0], ['OP16-034', 4, 4],
     ['OP16-038', 3, 3], ['OP16-042', 4, 4], ['OP16-045', 4, 2], ['OP16-048', 4, 1],
-    ['OP16-052', 1, 1], ['OP16-054', 3, 3], ['OP16-055', 4, 3], ['OP16-056', 4, 4],
-    ['ST30-014', 2, 2],
+    ['OP16-054', 4, 4], ['OP16-055', 4, 4], ['OP16-056', 4, 2], ['ST30-014', 2, 2],
   ];
-  // Three benched cards: two not owned, one owned.
+  // Bench: two not owned (Bunkov, Antlerkov) + one partially owned (Luffy 1/3).
   const DEMO_BENCH = [
-    { code: 'OP16-002', qty: 2, owned: 0 },
-    { code: 'OP16-004', qty: 1, owned: 0 },
-    { code: 'OP16-006', qty: 1, owned: 1 },
+    { code: 'OP16-025', qty: 1, owned: 0 },
+    { code: 'OP16-029', qty: 1, owned: 0 },
+    { code: 'OP16-052', qty: 3, owned: 1 },
   ];
 
   const isBase = (code) => !/_p\d+$/i.test(code);
@@ -205,6 +204,21 @@
     renderBench();
     $('edBenchSection').style.display = '';                 // reveal the seeded bench
     $('edBenchBtn').setAttribute('aria-expanded', 'true');
+
+    // Console helper to lock in a new default: arrange the deck + bench, then run
+    // PKDemoExport() in DevTools — it copies the current setup as JSON (deck +
+    // bench) to paste back so it can be baked into DEMO_DECK / DEMO_BENCH.
+    window.PKDemoExport = () => {
+      const out = {
+        deck: deckCards.map(r => [r.card_code, r.quantity, r.owned]),
+        bench: bench.map(b => ({ code: b.code, qty: b.qty, owned: b.owned })),
+        format: deck.format,
+      };
+      const json = JSON.stringify(out);
+      try { navigator.clipboard.writeText(JSON.stringify(out, null, 2)); } catch (e) {}
+      console.log('%cPKDemo setup (copied to clipboard):', 'font-weight:bold', json);
+      return out;
+    };
   }
 
   function demoValidity() {
@@ -1344,6 +1358,7 @@
   // (increment if already listed), then drop it from the bench. Not-owned copies
   // have no trade value, so only `owned` is added.
   async function addBenchedToTradeBinder(code) {
+    if (DEMO) return;
     const b = bench.find(x => x.code === code);
     if (!b || !(b.owned > 0)) return;
     const qty = b.owned;

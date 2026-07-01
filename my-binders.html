@@ -75,7 +75,22 @@
             <img class="demo-star" src="images/star-rate.svg" alt="" aria-hidden="true">
           </p>
         </div>
-        <div data-pk-demo="binder"></div>
+        <div class="demo-carousel" id="binderCarousel">
+          <div class="demo-carousel-row">
+            <button class="demo-carousel-nav prev" type="button" aria-label="Previous binder">‹</button>
+            <div class="demo-carousel-viewport">
+              <div class="demo-carousel-track">
+                <div class="demo-carousel-slide"><iframe class="demo-binder-frame" data-cat="optcg" data-src="binder.html?demo=optcg" title="One Piece binder demo" scrolling="no"></iframe></div>
+                <div class="demo-carousel-slide"><iframe class="demo-binder-frame" data-cat="pokemon" data-src="binder.html?demo=pokemon" title="Pokémon binder demo" scrolling="no"></iframe></div>
+              </div>
+            </div>
+            <button class="demo-carousel-nav next" type="button" aria-label="Next binder">›</button>
+          </div>
+          <div class="demo-carousel-dots">
+            <button class="dot active" type="button" data-i="0" aria-label="One Piece binder"></button>
+            <button class="dot" type="button" data-i="1" aria-label="Pokémon binder"></button>
+          </div>
+        </div>
       </div>
 
       <div id="bindersWrap" style="display:none;">
