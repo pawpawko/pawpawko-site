@@ -396,26 +396,10 @@ injectThemeToggle();
   window.location.replace('account.html');
 })();
 
-(function wireGatedHomeCTAs() {
-  // Hero CTAs that need auth: signed-in users go straight to the tool, everyone
-  // else is routed to sign-in (account.html). Default hrefs already point at
-  // account.html so this is a no-op if Supabase never loads.
-  const CTAS = [
-    ['buildBindersBtn', 'my-binders.html'],
-    ['buildDecksBtn', 'decks.html'],
-  ];
-  for (const [id, dest] of CTAS) {
-    const btn = document.getElementById(id);
-    if (!btn) continue;
-    btn.addEventListener('click', async (e) => {
-      if (!window.PK || !window.SB_READY) return;  // fall back to default href (account.html)
-      e.preventDefault();
-      let user = null;
-      try { user = await window.PK.currentUser(); } catch (err) {}
-      window.location.href = user ? dest : 'account.html';
-    });
-  }
-})();
+// Home "Build Binders" / "Build Decks" CTAs link straight to my-binders.html /
+// decks.html (see index.html). Those pages self-gate: signed-out visitors get
+// the interactive demo (#signedOutPreview), signed-in users get the real tool,
+// so no auth routing is needed here.
 
 // Update the nav when the user actually signs in on this page (login form on
 // account.html, OAuth return). Skip the first event — onAuthStateChange fires
