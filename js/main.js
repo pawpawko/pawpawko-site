@@ -200,7 +200,7 @@ injectThemeToggle();
   if (!navAuth || !profileWrap) return;
 
   let badge, dd, list, notifs = [];
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = window.PK.escapeHtml;
 
   function buildUI() {
     const wrap = document.createElement('div');

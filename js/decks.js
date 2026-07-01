@@ -67,7 +67,7 @@
       b.classList.toggle('active', b.dataset.value === value));
   };
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = window.PK.escapeHtml;
 
   async function init() {
     user = await window.PK.currentUser();

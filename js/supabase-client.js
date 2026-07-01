@@ -20,6 +20,12 @@
 
 // --- Auth helpers ---
 window.PK = {
+  // HTML/attribute output escaper — single source of truth. Page modules alias
+  // this (e.g. `const escapeHtml = window.PK.escapeHtml`). escapeAttr is a safe
+  // superset (also escapes & and ') so it's fine in quoted attribute values.
+  escapeHtml: (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+  escapeAttr: (s) => window.PK.escapeHtml(s),
+
   async currentUser() {
     if (!window.SB_READY) return null;
     const { data } = await window.sb.auth.getUser();

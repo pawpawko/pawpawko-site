@@ -1792,9 +1792,7 @@
   function listingLabel(t) {
     return ({trade:'Trade Only', sell:'Sell Only', free:'Free', combo:'Trade or Sell'})[t] || t;
   }
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
+  const escapeHtml = window.PK.escapeHtml;
 
   // Swap a broken card image for a text placeholder without an inline onerror
   // handler (keeps us CSP-clean — no inline event handlers). Markup opts in with
