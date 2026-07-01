@@ -68,3 +68,11 @@
   .gc-card.is-left,.gc-card.is-right { opacity:.32; }
 }
 @media (prefers-reduced-motion: reduce){ .gc-card,.gc-card-inner { transition-duration:.01ms; } }
+
+/* ---- real card-back images (drop-in; ../ because this file is in css/) ----
+   Pokémon: official back sourced from web. Add One Piece / Cyberpunk the same
+   way once their images land in images/ (e.g. back-optcg.webp, back-cyberpunk.webp):
+     .gc-back--optcg     { background-image:url("../images/back-optcg.webp"); ... }
+     .gc-back--cyberpunk { background-image:url("../images/back-cyberpunk.webp"); ... } */
+.gc-back--pokemon { background-image:url("../images/back-pokemon.jpg"); background-size:cover; border-width:0; }
+.gc-back--pokemon::before, .gc-back--pokemon .gc-back-emblem { display:none; }
