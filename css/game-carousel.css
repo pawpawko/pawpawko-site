@@ -80,3 +80,5 @@
 .gc-back--optcg::before, .gc-back--optcg .gc-back-emblem { display:none; }
 .gc-back--cyberpunk { background-image:url("../images/back-cyberpunk.webp"); background-size:cover; background-position:center; border-width:0; }
 .gc-back--cyberpunk::before, .gc-back--cyberpunk .gc-back-emblem { display:none; }
+/* space between the carousel and the hero Build buttons */
+.gc-viewport { margin-bottom: 2.5rem; }
