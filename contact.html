@@ -87,8 +87,10 @@
           </ul>
         </div>
 
-        <form class="contact-form" name="contact" method="POST" data-netlify="true" action="/thanks.html">
+        <form class="contact-form" name="contact" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" action="/thanks.html">
           <input type="hidden" name="form-name" value="contact">
+          <!-- Honeypot: hidden from humans; bots that fill it get silently dropped by Netlify. -->
+          <p class="hidden" hidden aria-hidden="true"><label>Don't fill this out if you're human: <input name="bot-field"></label></p>
           <div class="form-group">
             <label class="form-label" for="name">Name</label>
             <input class="form-input" type="text" id="name" name="name" placeholder="Your name" required>

@@ -817,13 +817,14 @@
       tile.className = 'cb-tile';
       tile.innerHTML = `
         <div class="cb-tile-img">
-          ${c.image_url ? `<img loading="lazy" referrerpolicy="no-referrer" src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.name || c.card_code)}" onerror="this.outerHTML='<div class=&quot;card-placeholder small&quot;>${escapeHtml(c.card_code)}</div>'">` : `<div class="card-placeholder small">${escapeHtml(c.card_code)}</div>`}
+          ${c.image_url ? `<img loading="lazy" referrerpolicy="no-referrer" src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.name || c.card_code)}" data-fallback="card-placeholder small" data-code="${escapeHtml(c.card_code)}">` : `<div class="card-placeholder small">${escapeHtml(c.card_code)}</div>`}
         </div>
         <div class="cb-tile-name">${escapeHtml(c.name || '')}</div>
         <div class="cb-tile-code">${escapeHtml(c.card_code)}</div>`;
       tile.addEventListener('click', () => openAddListing(c));
       grid.appendChild(tile);
     });
+    wireImgFallbacks(grid);
     if (pag && totalPages > 1) {
       const mkBtn = (label, enabled, onClick, isActive) => {
         const b = document.createElement('button');
@@ -1259,9 +1260,11 @@
     const c = l.cards || {};
     const url = c.image_url_lg || c.image_url || '';
 
-    el.querySelector('.bl-imgwrap').innerHTML = url
-      ? `<img class="bl-img" referrerpolicy="no-referrer" alt="${escapeHtml(c.name || l.card_code)}" src="${escapeHtml(url)}" onerror="this.outerHTML='<div class=&quot;bl-placeholder&quot;>${escapeHtml(l.card_code)}</div>'">`
+    const blImgWrap = el.querySelector('.bl-imgwrap');
+    blImgWrap.innerHTML = url
+      ? `<img class="bl-img" referrerpolicy="no-referrer" alt="${escapeHtml(c.name || l.card_code)}" src="${escapeHtml(url)}" data-fallback="bl-placeholder" data-code="${escapeHtml(l.card_code)}">`
       : `<div class="bl-placeholder">${escapeHtml(l.card_code)}</div>`;
+    wireImgFallbacks(blImgWrap);
 
     el.querySelector('.bl-name').textContent = c.name || l.card_code;
     el.querySelector('.bl-code').textContent = l.card_code;
@@ -1333,7 +1336,7 @@
       </div>` : '';
     tile.innerHTML = `
       <div class="card-tile-img">
-        ${c.image_url ? `<img referrerpolicy="no-referrer" src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.name || l.card_code)}" onerror="this.outerHTML='<div class=&quot;card-placeholder&quot;>${escapeHtml(l.card_code)}</div>'">` : `<div class="card-placeholder">${escapeHtml(l.card_code)}</div>`}
+        ${c.image_url ? `<img referrerpolicy="no-referrer" src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.name || l.card_code)}" data-fallback="card-placeholder" data-code="${escapeHtml(l.card_code)}">` : `<div class="card-placeholder">${escapeHtml(l.card_code)}</div>`}
       </div>
       <div class="card-tile-body">
         <div class="card-tile-meta">
@@ -1346,6 +1349,7 @@
         ${notesHtml}
         ${editControls}
       </div>`;
+    wireImgFallbacks(tile);
     return tile;
   }
 
@@ -1676,6 +1680,22 @@
   }
   function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Swap a broken card image for a text placeholder without an inline onerror
+  // handler (keeps us CSP-clean — no inline event handlers). Markup opts in with
+  // <img data-fallback="<placeholder class list>" data-code="<placeholder text>">;
+  // after the HTML is inserted, call wireImgFallbacks(root) on the container.
+  function wireImgFallbacks(root) {
+    if (!root) return;
+    root.querySelectorAll('img[data-fallback]').forEach(img => {
+      img.addEventListener('error', () => {
+        const ph = document.createElement('div');
+        ph.className = img.dataset.fallback;
+        ph.textContent = img.dataset.code || '';
+        img.replaceWith(ph);
+      }, { once: true });
+    });
   }
 
   // ----- Meta row icons -----
