@@ -34,6 +34,24 @@
   let rotatedPrefixes = new Set();  // set prefixes out of Standard (e.g. OP01)
   let rotationExempt = new Set();   // base codes legal despite a rotated prefix
 
+  // ---- Signed-out interactive demo ----
+  let DEMO = false;                 // true when no user: real editor, no DB writes
+  // Ko's GU Monkey.D.Luffy deck as [code, quantity, owned]; five cards are left
+  // under-owned for the demo (OP16-032 all 4 missing, the rest partially).
+  const DEMO_DECK = [
+    ['OP05-057', 2, 2], ['OP11-061', 2, 2], ['OP13-040', 2, 2], ['OP15-032', 2, 2],
+    ['OP16-026', 3, 1], ['OP16-027', 2, 2], ['OP16-032', 4, 0], ['OP16-034', 4, 4],
+    ['OP16-038', 3, 3], ['OP16-042', 4, 4], ['OP16-045', 4, 2], ['OP16-048', 4, 1],
+    ['OP16-052', 1, 1], ['OP16-054', 3, 3], ['OP16-055', 4, 3], ['OP16-056', 4, 4],
+    ['ST30-014', 2, 2],
+  ];
+  // Three benched cards: two not owned, one owned.
+  const DEMO_BENCH = [
+    { code: 'OP16-002', qty: 2, owned: 0 },
+    { code: 'OP16-004', qty: 1, owned: 0 },
+    { code: 'OP16-006', qty: 1, owned: 1 },
+  ];
+
   const isBase = (code) => !/_p\d+$/i.test(code);
   const baseCode = (code) => String(code).split('_')[0];
   // One Piece color letters (U = Blue, since B is taken by Black). Used for the
@@ -54,7 +72,7 @@
 
   async function init() {
     user = await window.PK.currentUser();
-    if (!user) { $('needsAuth').style.display = ''; return; }
+    if (!user) { DEMO = true; user = { id: '__demo__' }; }
 
     const [{ data: exRows }, { data: rotSets }, { data: rotEx }] = await Promise.all([
       window.sb.from('deck_rule_exceptions').select('card_code,max_copies').eq('game', GAME),
@@ -139,12 +157,62 @@
       else showList(true);
     });
 
+    if (DEMO) { await startDemo(); return; }
+
     // Deep-link / refresh restore: ?deck=<id> reopens that deck's editor.
     const deepLink = new URLSearchParams(location.search).get('deck');
     if (deepLink) { openDeck(deepLink); return; }
 
     $('decksWrap').style.display = '';
     loadDecks();
+  }
+
+  // ---- Signed-out interactive demo: run the REAL editor on an in-memory copy
+  // of Ko's deck. Writes are stubbed (guarded by DEMO) so nothing saves; reads
+  // (card art, prices, stats) use the world-readable cards table. ----
+  async function startDemo() {
+    deck = { id: '__demo__', name: 'GU Monkey.D.Luffy Deck', leader_card_code: 'OP16-022', format: 'standard', user_id: user.id, is_public: false };
+    isDeckOwner = true;
+    ownedElsewhere = {}; cardArt = {}; leaderArts = [];
+    deckCards = DEMO_DECK.map(([card_code, quantity, owned]) => ({ card_code, quantity, owned }));
+    bench = DEMO_BENCH.map(b => ({ code: b.code, qty: b.qty, owned: b.owned }));
+    const codes = deckCards.map(r => r.card_code).concat(bench.map(b => b.code));
+    const [{ data: L }, { data: cs }] = await Promise.all([
+      window.sb.from('cards').select('card_code,name,color,cost,life,image_url,image_url_lg,types,attribute').eq('game', GAME).eq('card_code', deck.leader_card_code).maybeSingle(),
+      window.sb.from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types').eq('game', GAME).in('card_code', codes),
+    ]);
+    leaderCard = L || null;
+    (cs || []).forEach(c => { cardInfo[c.card_code] = c; });
+
+    // Drop the real editor into the signed-out preview (headline · editor · CTA).
+    const sop = $('signedOutPreview');
+    sop.style.display = '';
+    const stub = sop.querySelector('[data-pk-demo="deck"]'); if (stub) stub.remove();
+    const cta = sop.querySelector('.signed-out-cta');
+    const ew = $('editorWrap');
+    if (cta) sop.insertBefore(ew, cta); else sop.appendChild(ew);
+    ew.style.display = '';
+    $('backToDecks').style.display = 'none';
+
+    $('edDeckName').value = deck.name; $('edDeckName').readOnly = true;
+    setPill('edFormat', deck.format);
+    $('edArtBtn').style.display = 'none';
+    $('edLeaderImg').src = (leaderCard && (leaderCard.image_url_lg || leaderCard.image_url)) || '';
+    $('edPublishOpts').style.display = 'none';
+
+    renderDeck();
+    await refreshValidity();
+    renderBench();
+    $('edBenchSection').style.display = '';                 // reveal the seeded bench
+    $('edBenchBtn').setAttribute('aria-expanded', 'true');
+  }
+
+  function demoValidity() {
+    const total = deckCards.reduce((s, r) => s + r.quantity, 0);
+    const owned = deckCards.reduce((s, r) => s + Math.min(r.owned, r.quantity), 0);
+    const missing = deckCards.reduce((s, r) => s + Math.max(0, r.quantity - r.owned), 0);
+    const valid = total === 50;
+    return { valid, total_cards: total, owned_cards: owned, missing_cards: missing, owned_complete: missing === 0, problems: valid ? [] : [`${total} of 50 cards`] };
   }
 
   // ---------------- deck list ----------------
@@ -926,6 +994,7 @@
   let dcQueue = Promise.resolve();
   let dcPending = 0;
   function queueDeckWrite(writer) {
+    if (DEMO) { refreshValidity(); return; }  // demo: local-only, never touch the DB
     dcPending++;
     const settle = () => { if (--dcPending === 0) reloadDeckCards().then(renderBrowser); };
     dcQueue = dcQueue.then(writer).then(settle, (e) => {
@@ -1079,7 +1148,7 @@
   let dragSrc = null;        // { zone:'deck'|'bench', code } while dragging
 
   function benchKey(id) { return `pawpaw:deckBench:${id}`; }
-  function saveBench() { try { localStorage.setItem(benchKey(deck.id), JSON.stringify(bench)); } catch (e) {} }
+  function saveBench() { if (DEMO) return; try { localStorage.setItem(benchKey(deck.id), JSON.stringify(bench)); } catch (e) {} }
   function readBenchLocal() {
     try {
       const a = JSON.parse(localStorage.getItem(benchKey(deck.id)) || '[]');
@@ -1892,7 +1961,7 @@
 
   let deckValid = false;
   async function refreshValidity() {
-    const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: deck.id });
+    const v = DEMO ? demoValidity() : (await window.sb.rpc('deck_validity', { p_deck_id: deck.id })).data;
     if (!v) return;
     deckValid = !!v.valid;
     const statsBtn = $('edStatsBtn');
@@ -1963,6 +2032,7 @@
 
   // Eye: private -> reveal the trade/sell/borrow options; public -> unpublish.
   async function onEyeClick() {
+    if (DEMO) return;
     $('edError').textContent = '';
     if (!deck.is_public) {
       const opts = $('edPublishOpts');
@@ -1978,6 +2048,7 @@
 
   // Picking a type publishes (or re-publishes) with it; server re-validates.
   async function onListingTypeClick(e) {
+    if (DEMO) return;
     const btn = e.target.closest('.pill-choice-btn');
     if (!btn || (deck.is_public && btn.dataset.value === deck.listing_type)) return;
     $('edError').textContent = '';
@@ -1991,6 +2062,7 @@
   async function onFormatClick(e) {
     const btn = e.target.closest('.pill-choice-btn');
     if (!btn || !deck || btn.dataset.value === deck.format) return;
+    if (DEMO) { deck.format = btn.dataset.value; return; }
     $('edError').textContent = '';
     const { error } = await window.sb.from('decks')
       .update({ format: btn.dataset.value }).eq('id', deck.id);
@@ -2005,6 +2077,7 @@
   }
 
   async function renameDeck() {
+    if (DEMO) return;
     const name = $('edDeckName').value.trim();
     if (!name || !deck) return;
     const { error } = await window.sb.from('decks').update({ name }).eq('id', deck.id);
@@ -2251,6 +2324,7 @@
   }
 
   async function deleteDeck() {
+    if (DEMO) return;
     // Deck "owned" copies aren't tracked as binder listings, so they'd be lost
     // on delete. A single custom modal offers to move them to the trade binder
     // first (native confirm() chains get suppressed after the first dialog).

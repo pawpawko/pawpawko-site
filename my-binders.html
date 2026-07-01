@@ -67,8 +67,15 @@
     <div class="container container-wide">
       <div id="setupNotice"></div>
 
-      <div id="needsAuth" style="display:none;" class="notice notice-warn">
-        You must <a href="account.html">sign in</a> to view your binders.
+      <div id="signedOutPreview" style="display:none;">
+        <div class="signed-out-preview">
+          <h2>Your whole collection, organized</h2>
+        </div>
+        <div data-pk-demo="binder"></div>
+        <div class="signed-out-cta">
+          <a href="account.html" class="btn btn-filled">Sign Up</a>
+          <a href="account.html" class="btn">Sign In</a>
+        </div>
       </div>
 
       <div id="bindersWrap" style="display:none;">
@@ -132,6 +139,7 @@
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/demos.js"></script>
   <script src="js/my-binders.js"></script>
 </body>
 </html>

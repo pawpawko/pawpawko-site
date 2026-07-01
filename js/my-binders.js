@@ -9,7 +9,11 @@
 
   async function init() {
     const user = await window.PK.currentUser();
-    if (!user) { document.getElementById('needsAuth').style.display = ''; return; }
+    if (!user) {
+      document.getElementById('signedOutPreview').style.display = '';
+      if (window.PKDemo) window.PKDemo.mountAll();
+      return;
+    }
 
     document.getElementById('bindersWrap').style.display = '';
     loadBinders(user.id);
