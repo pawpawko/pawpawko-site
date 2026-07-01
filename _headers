@@ -1,0 +1,22 @@
+# Netlify security headers for pawpawko.com
+# Applied to every response. This is the site's second line of defense
+# (RLS on Supabase remains the primary authorization boundary).
+#
+# NOTE: delivered as HTTP headers (not a <meta> CSP tag) on purpose, so the
+# Capacitor/Android build (which bundles the same HTML locally) is unaffected.
+#
+# The CSP script-src hashes below cover the 3 inline <head>/<body> scripts:
+#   sha256-F+sz…  -> the "is-signed-in" localStorage check (all pages)
+#   sha256-tGQI…  -> index.html signed-in home redirect
+#   sha256-wz+Y…  -> trades.html last-game tab restore
+# If any of those inline scripts is edited, regenerate its hash
+# (sha256 of the exact bytes between <script> and </script>, base64) or the
+# script will be blocked. See scripts/build-web.mjs notes.
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-F+szAJbo0NBR6XlU4c5wTxcT+7YPDNZsVRVwly5Ubos=' 'sha256-tGQIe/RDf172VdH2KN9uzMUYyYEa3QvwfrNV2B0hvkE=' 'sha256-wz+Y9TqtOTEXp+neoyPDshbXGQ9f+d68D4jKoeFgTr8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cligjmfhxvazjarbvexp.supabase.co https://pub-8580e1bc4e9d4351b654445380945096.r2.dev; connect-src 'self' https://cligjmfhxvazjarbvexp.supabase.co wss://cligjmfhxvazjarbvexp.supabase.co; upgrade-insecure-requests
