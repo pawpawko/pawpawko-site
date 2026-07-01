@@ -3174,7 +3174,11 @@ body.binder-demo .btn:hover, body.binder-demo .btn-filled:hover { background: #8
 .demo-binder-frame {
   width: 100%; height: 760px; display: block;
   border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-card);
+  /* Stay hidden until the parent has scaled it to fit — hides the in-iframe
+     load flash (nav/footer/"Loading…") and the unscaled→scaled snap. */
+  opacity: 0; transition: opacity 0.35s ease;
 }
+.demo-binder-frame.ready { opacity: 1; }
 .demo-carousel-nav {
   width: 42px; height: 42px; flex: none; border-radius: 50%;
   border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);
