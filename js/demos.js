@@ -27,6 +27,9 @@
     // Scale each embedded binder down so the whole thing fits in one screen (no
     // scroll). 250px leaves room for the nav + demo header + dots.
     const availH = () => Math.max(460, window.innerHeight - 250);
+    // Reserve the final height up front so the loading state is a calm, correctly
+    // sized area (not a 760px white box that then collapses).
+    if (viewport) viewport.style.height = availH() + 'px';
     function fit(f) {
       const H = parseInt(f.dataset.h || '0', 10);
       if (!H) return;
@@ -57,6 +60,8 @@
       f.dataset.h = Math.max(300, (e.data.height || 0) + 4);
       fit(f);
       if (f === frames[idx]) syncHeight();
+      // Reveal once it's a real, scaled binder (not the tiny title-only first paint).
+      if ((e.data.height || 0) > 500) f.classList.add('ready');
     });
     window.addEventListener('resize', () => { frames.forEach(fit); syncHeight(); });
   }

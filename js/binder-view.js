@@ -287,10 +287,25 @@
     }
 
     // Report height to the parent carousel so it can size this iframe to fit.
+    // Debounced + retried: the parent scales & reveals the iframe on the first
+    // real height, so a missed early post (listener race) can't strand it
+    // unscaled; debouncing + the ignore-sub-2px guard stop the scale from
+    // jittering as card art streams in over the network.
     try {
-      const post = () => { try { parent.postMessage({ type: 'pk-binder-demo-height', cat: binderCategory, height: document.documentElement.scrollHeight }, '*'); } catch (e) {} };
-      new ResizeObserver(post).observe(document.body);
-      window.addEventListener('load', post);
+      let lastH = 0, timer = null;
+      const post = () => {
+        const h = Math.max(300, document.documentElement.scrollHeight);
+        // Ignore sub-8px churn — cards reserve their space so the real height is
+        // stable; small deltas are just the iframe autosize feedback loop.
+        if (Math.abs(h - lastH) < 8) return;
+        lastH = h;
+        try { parent.postMessage({ type: 'pk-binder-demo-height', cat: binderCategory, height: h }, '*'); } catch (e) {}
+      };
+      const schedule = () => { clearTimeout(timer); timer = setTimeout(post, 80); };
+      new ResizeObserver(schedule).observe(document.body);
+      window.addEventListener('load', schedule);
+      // Prompt posts (after the grid renders) so the parent scales + reveals fast.
+      [50, 150, 400, 900, 1600].forEach(d => setTimeout(post, d));
     } catch (e) {}
 
     loadListings(true, true);
