@@ -1,0 +1,63 @@
+{
+  "game": "cyberpunk",
+  "name": "Cyberpunk Trading Card Game",
+  "source": "https://cyberpunktcg.com/gameplay-guide",
+  "scraped_at": "2026-06-26",
+  "note": "Machine-readable deck-construction constraints for the future Pawpawko deck-builder. The prose rules live in cyberpunk_rules.md. Card data lives in public.cards where game='cyberpunk' (legends are type='Legend'; RAM in column ram; color in column color).",
+
+  "deck_construction": {
+    "legends": {
+      "count": 3,
+      "unique_names": true,
+      "identified_by": "cards.type = 'Legend'",
+      "comment": "Exactly 3 Legend cards, each with a different name. They sit in their own Legends area and are NOT counted toward the main-deck size."
+    },
+    "main_deck_size": {
+      "min": 40,
+      "max": 50,
+      "excludes_legends": true,
+      "comment": "No fewer than 40 and no more than 50 cards, not including the 3 Legends."
+    },
+    "max_copies_per_card": {
+      "limit": 3,
+      "counted_by": "cards.card_code",
+      "comment": "No more than 3 copies of the same card."
+    },
+    "ram_constraint": {
+      "type": "per_color_sum",
+      "rule": "For every non-Legend card in the deck: card.ram <= sum(legend.ram for legend in deck.legends where legend.color == card.color).",
+      "details": "Each Legend grants a RAM limit only toward its own color. A deck's per-color RAM cap is the cumulative RAM of the Legends sharing that color. A card may be included only if its RAM value is <= the cap for its color. Cards whose color has no matching Legend (cap = 0) cannot be included.",
+      "example": {
+        "legends": [
+          {"name": "Goro Takemura: Hands Unclean", "color": "Green", "ram": 2},
+          {"name": "Saburo Arasaka: Stubborn Patriarch", "color": "Green", "ram": 2},
+          {"name": "Yorinobu Arasaka: Embracing Destruction", "color": "Red", "ram": 2}
+        ],
+        "caps": {"Green": 4, "Red": 2},
+        "meaning": "Deck may include Green cards with RAM <= 4 and Red cards with RAM <= 2; no Blue or Yellow cards (cap 0)."
+      }
+    },
+    "legality_flag": {
+      "source_column": "cards.legality",
+      "comment": "Source-reported per-card legality (e.g. 'legal'). Exclude any card whose legality is not 'legal' once a ban/restricted list exists."
+    }
+  },
+
+  "enums": {
+    "colors": ["Red", "Blue", "Green", "Yellow"],
+    "card_types": ["Legend", "Unit", "Gear", "Program"],
+    "rarities": ["Common", "Uncommon", "Rare", "Epic"],
+    "classifications": ["6th Street", "Aldecado", "Arasaka", "Braindance", "Corpo", "Cyberware", "Doll", "Drone", "Extreme", "Ganger", "Maelstrom", "Merc", "Militech", "Mox", "Mystic", "NCPD", "Netrunner", "Nomad", "Quickhack", "Raffen Shiv", "Ripperdoc", "Rocker", "Samurai", "Scavenger", "Trauma Team", "Tyger Claws", "Valentino", "Vehicle", "Voodoo Boys", "Weapon", "Zetatech"]
+  },
+
+  "reference": {
+    "win_condition": "Start a turn with 7+ Gig dice in your Gig area. Overtime (sudden death, majority wins) begins after the last player's 7th turn.",
+    "lose_condition": "Deck out: if you must draw with an empty deck, your Rival immediately wins.",
+    "core_resources": {
+      "eddies": "Currency. Pay a card's cost (top-left number) by spending Eddies. Create Eddies by selling cards with a Sell tag (1 Eddie/turn). Legends may also be spent as 1 Eddie each.",
+      "gigs": "Dice that represent jobs; controlling a majority wins.",
+      "street_cred": "Sum of your Gig dice face values; gates some effects.",
+      "ram": "Deck-building resource only (not paid in-game) — see ram_constraint."
+    }
+  }
+}

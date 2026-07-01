@@ -4,16 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pawpaw Ko</title>
-  <meta name="description" content="A community-first pop-up gaming company bringing TCGs and board games to the spaces where people already gather.">
+  <meta name="description" content="Pawpaw Ko — organize your cards into binders, build tournament-legal One Piece decks, and find local trade partners.">
   <link rel="icon" href="images/favicon.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <script>try{if(localStorage.getItem('pawpaw:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/game-carousel.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
-  <!-- Signed-in users land on the binders search by default; Home stays
-       reachable via the logo / footer links, which carry ?home. -->
-  <script>(function(){try{if(/(^|[?&])home([=&]|$)/.test(location.search))return;if(document.documentElement.classList.contains('is-signed-in'))location.replace('trades.html');}catch(e){}})();</script>
 </head>
 <body>
 
@@ -22,7 +21,6 @@
       <div class="nav-inner">
         <a href="index.html?home" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
         <ul class="nav-links">
-          <li><a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
           <li class="nav-dd-wrap">
             <button class="nav-dd-btn" type="button" aria-haspopup="true" aria-expanded="false">My Collection</button>
             <div class="nav-dd">
@@ -30,6 +28,7 @@
               <a href="decks.html">Decks</a>
             </div>
           </li>
+          <li><a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
           <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
           <!-- hidden-tab: <li><a href="contact.html">Contact</a></li> -->
         </ul>
@@ -55,12 +54,12 @@
 
   <nav class="nav-mobile" id="navMobile">
     <button class="nav-close" id="navClose">✕</button>
-    <a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a>
     <button class="nav-mobile-group" type="button" aria-expanded="false">My Collection</button>
     <div class="nav-mobile-sub">
       <a href="my-binders.html">Binders</a>
       <a href="decks.html">Decks</a>
     </div>
+    <a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a>
     <!-- hidden-tab: <a href="gallery.html">Events</a> -->
     <!-- hidden-tab: <a href="contact.html">Contact</a> -->
     <a href="account.html" id="mobileAuthLink">Account</a>
@@ -71,12 +70,90 @@
     <div class="hero-content">
       <span class="hero-eyebrow fade-up">Collect, play, trade.</span>
       <h1 class="hero-title fade-up fade-up-delay-1">Pawpaw <em>Ko</em></h1>
-      <p class="hero-subtitle fade-up fade-up-delay-2">
-        Build your binder, find local trade partners across the five boroughs, and meet up where you already play. Pop-up gaming events coming soon.
-      </p>
+      <div class="gc-viewport" id="gamesCarousel">
+        <button class="gc-arrow gc-prev" type="button" aria-label="Previous game">‹</button>
+        <div class="gc-stage" aria-roledescription="carousel" aria-label="Supported games">
+          <div class="gc-card" data-game="optcg" role="button" tabindex="-1" aria-label="One Piece TCG — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--optcg">
+                <div class="gc-back-emblem"><span class="gc-back-mark ">OP</span><span class="gc-back-name">One Piece</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">One Piece TCG</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-yes">Decks <span class="gc-tag">Ready</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="gc-card" data-game="pokemon" role="button" tabindex="-1" aria-label="Pokémon — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--pokemon">
+                <div class="gc-back-emblem"><span class="gc-back-mark gc-pokeball"></span><span class="gc-back-name">Pokémon</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">Pokémon</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-soon">Decks <span class="gc-tag">Coming soon</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="gc-card" data-game="cyberpunk" role="button" tabindex="-1" aria-label="Cyberpunk TCG — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--cyberpunk">
+                <div class="gc-back-emblem"><span class="gc-back-mark ">CP</span><span class="gc-back-name">Cyberpunk</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">Cyberpunk TCG</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-soon">Decks <span class="gc-tag">Coming soon</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="gc-arrow gc-next" type="button" aria-label="Next game">›</button>
+      </div>
       <div class="hero-actions fade-up fade-up-delay-3">
-        <a href="trades.html" class="btn">Browse Binders</a>
-        <a href="account.html" id="buildBindersBtn" class="btn btn-filled">Build Binders</a>
+        <a href="trades.html" class="btn btn-filled">Browse Binders</a>
+        <a href="my-binders.html" id="buildBindersBtn" class="btn btn-filled">Build Binders</a>
+        <a href="decks.html" id="buildDecksBtn" class="btn btn-filled">Build Decks</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- PATCH NOTES + ANNOUNCEMENTS -->
+  <section class="section" id="home-updates">
+    <div class="container">
+      <div class="updates-grid">
+        <article class="update-card" id="patch-notes">
+          <h2 class="update-heading">Patch Notes</h2>
+          <div class="update-head">
+            <span class="update-version">v0.9.0</span>
+            <time class="update-date">Jun 24, 2026</time>
+          </div>
+          <ul class="update-list">
+            <li>Deck page shows Cost to Finish and Cost of Deck price breakdowns.</li>
+            <li>Deck sharing: prefill an invite, see pending invites, and rescind before it’s accepted.</li>
+            <li>Live notifications with an unread badge, plus real-time co-edited binders and decks.</li>
+            <li>Wishlist “Got it” — collect a card straight from the deck view.</li>
+            <li>Shared binders and shared decks now match across web and mobile.</li>
+          </ul>
+        </article>
+        <article class="update-card" id="news">
+          <h2 class="update-heading">News &amp; Announcements</h2>
+          <div class="update-item">
+            <div class="update-head">
+              <span class="update-tag">Coming soon</span>
+            </div>
+            <h3 class="update-title">Card scanning is coming to <strong>mobile</strong></h3>
+            <p class="update-body">Scan your One Piece cards with your phone camera to add them straight to a binder or deck — no typing. It’s a <strong>mobile-only</strong> feature, and the Pawpaw Ko <strong>mobile app isn’t available to users yet</strong>. <strong>Coming soon.</strong></p>
+          </div>
+        </article>
       </div>
     </div>
   </section>
@@ -104,5 +181,7 @@
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/demos.js"></script>
+  <script src="js/game-carousel.js"></script>
 </body>
 </html>

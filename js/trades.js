@@ -131,7 +131,7 @@
   function readLastGame() {
     try {
       const v = localStorage.getItem(LAST_GAME_KEY);
-      return v === 'pokemon' || v === 'optcg' ? v : 'optcg';
+      return v === 'pokemon' || v === 'optcg' || v === 'cyberpunk' ? v : 'optcg';
     } catch (e) { return 'optcg'; }
   }
   function writeLastGame(g) {
@@ -329,7 +329,7 @@
     const flair = p.flair || 'trade';
     const flairLabel = { trade: 'Trade Binder', wishlist: 'Wishlist Binder', flex: 'Flex Binder', lgs: 'Local Game Store' }[flair] || 'Trade Binder';
     const cat = p.category || 'optcg';
-    const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon' }[cat] || 'OPTCG';
+    const catLabel = { optcg: 'OPTCG', pokemon: 'Pokémon', cyberpunk: 'Cyberpunk' }[cat] || 'OPTCG';
     const updatedLabel = formatLastUpdated(p.last_updated_at);
     const href = `binder.html?id=${encodeURIComponent(p.binder_id)}`;
     const matchedCount = p.matched_card_count || 0;
@@ -549,7 +549,9 @@
   function parsedCardCodes() {
     const el = document.getElementById('filterCards');
     if (!el || !el.value) return [];
-    const normalize = currentCategory === 'pokemon'
+    // OPTCG codes are uppercase ('OP01-001'); Pokémon ('sv1-1') and
+    // Cyberpunk ('cb-v-streetkid-wnc-005a') codes are lowercase.
+    const normalize = (currentCategory === 'pokemon' || currentCategory === 'cyberpunk')
       ? s => s.trim().toLowerCase()
       : s => s.trim().toUpperCase();
     const codes = el.value.split(',').map(normalize).filter(Boolean);
@@ -563,6 +565,8 @@
     if (!el) return;
     el.placeholder = currentCategory === 'pokemon'
       ? 'sv1-1, sv3pt5-160, …'
+      : currentCategory === 'cyberpunk'
+      ? 'cb-v-streetkid-wnc-005a, …'
       : 'OP01-001, ST15-003, …';
   }
 

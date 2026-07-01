@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
+  <script>try{if(localStorage.getItem('pawpaw:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
 </head>
@@ -18,7 +19,6 @@
       <div class="nav-inner">
         <a href="index.html?home" class="nav-logo"><img src="images/sticker_jolly.png" alt="Pawpaw Ko" class="nav-logo-img">Pawpaw Ko</a>
         <ul class="nav-links">
-          <li><a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
           <li class="nav-dd-wrap">
             <button class="nav-dd-btn active" type="button" aria-haspopup="true" aria-expanded="false">My Collection</button>
             <div class="nav-dd">
@@ -26,6 +26,7 @@
               <a href="decks.html">Decks</a>
             </div>
           </li>
+          <li><a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
           <!-- hidden-tab: <li><a href="gallery.html">Events</a></li> -->
           <!-- hidden-tab: <li><a href="contact.html">Contact</a></li> -->
         </ul>
@@ -51,12 +52,12 @@
 
   <nav class="nav-mobile" id="navMobile">
     <button class="nav-close" id="navClose">✕</button>
-    <a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a>
     <button class="nav-mobile-group" type="button" aria-expanded="false">My Collection</button>
     <div class="nav-mobile-sub">
       <a href="my-binders.html">Binders</a>
       <a href="decks.html">Decks</a>
     </div>
+    <a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a>
     <!-- hidden-tab: <a href="gallery.html">Events</a> -->
     <!-- hidden-tab: <a href="contact.html">Contact</a> -->
     <a href="account.html" id="mobileAuthLink">Account</a>
@@ -128,7 +129,7 @@
             <label class="form-label" for="cbSeries">Set</label>
             <select class="form-input" id="cbSeries"><option value="">All</option></select>
           </div>
-          <div class="filter-group" data-game-filter="optcg">
+          <div class="filter-group" data-game-filter="optcg cyberpunk">
             <label class="form-label" for="cbColor">Color</label>
             <select class="form-input" id="cbColor"><option value="">All</option></select>
           </div>
@@ -136,13 +137,21 @@
             <label class="form-label" for="cbType">Type</label>
             <select class="form-input" id="cbType"><option value="">All</option></select>
           </div>
-          <div class="filter-group" data-game-filter="optcg">
+          <div class="filter-group" data-game-filter="optcg cyberpunk">
             <label class="form-label" for="cbCost">Cost</label>
             <select class="form-input" id="cbCost"><option value="">Any</option></select>
           </div>
           <div class="filter-group" data-game-filter="optcg">
             <label class="form-label" for="cbAttribute">Attribute</label>
             <select class="form-input" id="cbAttribute"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="cyberpunk">
+            <label class="form-label" for="cbTag">Tag</label>
+            <select class="form-input" id="cbTag"><option value="">Any</option></select>
+          </div>
+          <div class="filter-group" data-game-filter="cyberpunk">
+            <label class="form-label" for="cbRam">RAM</label>
+            <select class="form-input" id="cbRam"><option value="">Any</option></select>
           </div>
           <div class="filter-group" data-game-filter="pokemon">
             <label class="form-label" for="cbSupertype">Supertype</label>
@@ -215,8 +224,9 @@
                 <option value="custom-3x3">Custom (3x3)</option>
                 <option value="release">Release order</option>
                 <option value="rarity">Rarity</option>
-                <option value="color"     data-game-opt="optcg">Color</option>
-                <option value="cost"      data-game-opt="optcg">Cost</option>
+                <option value="color"     data-game-opt="optcg cyberpunk">Color</option>
+                <option value="cost"      data-game-opt="optcg cyberpunk">Cost</option>
+                <option value="ram"       data-game-opt="cyberpunk">RAM</option>
                 <option value="ptype"     data-game-opt="pokemon">Type</option>
                 <option value="hp"        data-game-opt="pokemon">HP</option>
                 <option value="supertype" data-game-opt="pokemon">Supertype</option>
