@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=optional">
   <script>try{if(localStorage.getItem('pawpaw:theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/game-carousel.css">
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
 </head>
 <body>
@@ -80,6 +81,64 @@
     </div>
   </section>
 
+  <!-- GAMES WE SUPPORT — 3D flip-card carousel -->
+  <section class="section games-section">
+    <div class="container">
+      <span class="eyebrow">Games we support</span>
+      <h2 class="gc-title">Pick your game</h2>
+      <p class="gc-sub">Tap a card to flip it and see what's ready to play.</p>
+      <div class="gc-viewport" id="gamesCarousel">
+        <button class="gc-arrow gc-prev" type="button" aria-label="Previous game">‹</button>
+        <div class="gc-stage" aria-roledescription="carousel" aria-label="Supported games">
+          <div class="gc-card" data-game="optcg" role="button" tabindex="-1" aria-label="One Piece TCG — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--optcg">
+                <div class="gc-back-emblem"><span class="gc-back-mark ">OP</span><span class="gc-back-name">One Piece</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">One Piece TCG</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-yes">Decks <span class="gc-tag">Ready</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="gc-card" data-game="pokemon" role="button" tabindex="-1" aria-label="Pokémon — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--pokemon">
+                <div class="gc-back-emblem"><span class="gc-back-mark gc-pokeball"></span><span class="gc-back-name">Pokémon</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">Pokémon</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-soon">Decks <span class="gc-tag">Coming soon</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="gc-card" data-game="cyberpunk" role="button" tabindex="-1" aria-label="Cyberpunk TCG — tap to flip">
+            <div class="gc-card-inner">
+              <div class="gc-face gc-back gc-back--cyberpunk">
+                <div class="gc-back-emblem"><span class="gc-back-mark ">CP</span><span class="gc-back-name">Cyberpunk</span></div>
+              </div>
+              <div class="gc-face gc-front">
+                <h3 class="gc-front-name">Cyberpunk TCG</h3>
+                <ul class="gc-support">
+                  <li class="gc-yes">Binders <span class="gc-tag">Ready</span></li>
+                  <li class="gc-soon">Decks <span class="gc-tag">Coming soon</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="gc-arrow gc-next" type="button" aria-label="Next game">›</button>
+      </div>
+      <p class="gc-hint">Tap a card to flip it · use ‹ › to browse</p>
+    </div>
+  </section>
+
   <!-- PATCH NOTES + ANNOUNCEMENTS -->
   <section class="section" id="home-updates">
     <div class="container">
@@ -136,5 +195,6 @@
   <script src="js/supabase-client.js"></script>
   <script src="js/main.js"></script>
   <script src="js/demos.js"></script>
+  <script src="js/game-carousel.js"></script>
 </body>
 </html>
