@@ -8,7 +8,8 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/'],
+    // js/vendor/ holds third-party minified bundles (Sentry) — not our code.
+    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/', 'js/vendor/'],
   },
   js.configs.recommended,
   {

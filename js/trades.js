@@ -405,27 +405,59 @@
   // ====================================================================
   // The card input accepts a comma-separated list of card codes. The
   // active "segment" (the partial code being typed between commas) drives
-  // a suggestion popup populated from window.sb.from('cards'). Up/Down
+  // a suggestion popup queried live from window.sb.from('cards'). Up/Down
   // navigates suggestions, Enter accepts the highlighted one.
 
-  let cardCodesAll = [];   // [{card_code, name}, ...] for the active category
   let activeSuggIndex = -1;
   let cardSuggBox, cardInput;
+  let suggSeq = 0;        // bumping this invalidates in-flight searches
+  let suggTimer = null;   // pending debounced search
 
-  // Fetch all card codes for the active category. cards.game is the
-  // discriminator (added in the multi-game migration); filter on it so
-  // OPTCG and Pokémon autocompletes don't pollute each other. Limit is
-  // bumped to 25k since the Pokémon catalog alone is ~17k.
-  async function refreshCardSuggestionsSource(category) {
-    if (!window.SB_READY) return;
+  // Close the popup and invalidate any pending/in-flight search. Called on
+  // Escape, on accept, and on category-tab change (suggestions are fetched
+  // per-keystroke scoped to currentCategory, so a tab switch only needs to
+  // reset state — no prefetch).
+  function resetCardSuggestions() {
+    clearTimeout(suggTimer);
+    suggSeq++;
+    activeSuggIndex = -1;
+    if (cardSuggBox) cardSuggBox.hidden = true;
+  }
+
+  // Server-side suggestion search for the active segment. cards.game is
+  // the discriminator (added in the multi-game migration); filter on it so
+  // OPTCG and Pokémon autocompletes don't pollute each other. Matching
+  // mirrors the old client-side filter — case-insensitive substring on
+  // card_code, ordered by card_code — plus name substrings. PostgREST .or()
+  // reserved characters are stripped from the segment (they never appear in
+  // card codes) and LIKE wildcards are backslash-escaped so they match
+  // literally — promo codes like 'OP01-001_p1' contain underscores.
+  async function fetchCardSuggestions(text) {
+    const safe = text.replace(/[,()"\\*]/g, '').replace(/[%_]/g, '\\$&');
+    if (!safe) return [];
     const { data, error } = await window.sb
       .from('cards')
       .select('card_code, name')
-      .eq('game', category)
+      .eq('game', currentCategory)
+      .or(`card_code.ilike.%${safe}%,name.ilike.%${safe}%`)
       .order('card_code')
-      .limit(25000);
-    if (error) { console.warn('[Pawpaw Ko] card suggestions fetch failed', error); cardCodesAll = []; return; }
-    cardCodesAll = data || [];
+      .limit(20);
+    if (error) { console.warn('[Pawpaw Ko] card suggestions fetch failed', error); return []; }
+    return data || [];
+  }
+
+  async function runSuggestionSearch(text) {
+    if (!window.SB_READY) return;
+    const mySeq = ++suggSeq;
+    const matches = await fetchCardSuggestions(text);
+    if (mySeq !== suggSeq || !cardSuggBox) return;          // superseded — drop it
+    if (document.activeElement !== cardInput) return;       // input blurred mid-fetch
+    renderSuggestions(matches);
+  }
+
+  function scheduleSuggestionSearch(text) {
+    clearTimeout(suggTimer);
+    suggTimer = setTimeout(() => runSuggestionSearch(text), 200);
   }
 
   // The comma-separated segment around the caret.
@@ -439,15 +471,10 @@
     return { text: (beforeChunk + afterChunk).trim(), start, end };
   }
 
-  function renderSuggestions(seg) {
+  function renderSuggestions(matches) {
     if (!cardSuggBox) return;
-    if (!seg.text || seg.text.length < 1) { cardSuggBox.hidden = true; return; }
-    const q = seg.text.toUpperCase();
-    const matches = cardCodesAll
-      .filter(c => c.card_code.toUpperCase().includes(q))
-      .slice(0, 10);
-    if (matches.length === 0) { cardSuggBox.hidden = true; return; }
-    cardSuggBox.innerHTML = matches.map((c, i) => `
+    if (matches.length === 0) { cardSuggBox.hidden = true; activeSuggIndex = -1; return; }
+    cardSuggBox.innerHTML = matches.slice(0, 10).map((c, i) => `
       <div class="card-sugg-item${i === 0 ? ' active' : ''}" data-card="${escapeHtml(c.card_code)}" role="option">
         <span class="card-sugg-code">${escapeHtml(c.card_code)}</span>
         <span class="card-sugg-name">${escapeHtml(c.name || '')}</span>
@@ -469,8 +496,9 @@
     // Place caret after the inserted comma+space so the user can keep typing
     const caret = (before + code + ', ').length;
     cardInput.setSelectionRange(caret, caret);
-    cardSuggBox.hidden = true;
-    activeSuggIndex = -1;
+    // Reset (not just hide) so a search still pending from the keystrokes
+    // before the accept can't reopen the popup.
+    resetCardSuggestions();
     cardInput.focus();
   }
 
@@ -487,7 +515,11 @@
     if (!cardInput || !cardSuggBox) return;
 
     cardInput.addEventListener('input', () => {
-      renderSuggestions(getActiveSegment(cardInput));
+      const seg = getActiveSegment(cardInput);
+      // Short segments close the popup immediately; longer ones kick off a
+      // debounced server search.
+      if (!seg.text || seg.text.length < 2) { resetCardSuggestions(); return; }
+      scheduleSuggestionSearch(seg.text);
     });
 
     cardInput.addEventListener('keydown', (e) => {
@@ -510,7 +542,7 @@
         e.preventDefault();
         if (isLoggedInCached) loadBinders();
       } else if (e.key === 'Escape') {
-        cardSuggBox.hidden = true;
+        resetCardSuggestions();
       } else if (e.key === 'Tab' && open && activeSuggIndex >= 0) {
         e.preventDefault();
         acceptSuggestion(activeSuggIndex);
@@ -607,7 +639,7 @@
         t.setAttribute('aria-selected', match ? 'true' : 'false');
       });
 
-      tabsEl.addEventListener('click', async (e) => {
+      tabsEl.addEventListener('click', (e) => {
         const tab = e.target.closest('.category-tab');
         if (!tab || tab.classList.contains('active')) return;
         tabsEl.querySelectorAll('.category-tab').forEach(t => {
@@ -619,7 +651,7 @@
         currentCategory = tab.dataset.category || 'optcg';
         writeLastGame(currentCategory);
         updateCardInputPlaceholder();
-        await refreshCardSuggestionsSource(currentCategory);
+        resetCardSuggestions();
         loadBinders();
       });
     }
@@ -627,7 +659,6 @@
     // Set up the card-search autocomplete once we know the user state.
     setupCardAutocomplete();
     updateCardInputPlaceholder();
-    await refreshCardSuggestionsSource(currentCategory);
 
     if (isLoggedInCached) {
       // Pre-populate filters from the user's profile before the first
