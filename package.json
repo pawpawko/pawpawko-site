@@ -3,5 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "description": "Pawpawko — static multi-page site for the trading card community (vanilla JS + Supabase, deployed to Netlify)",
-  "scripts": {}
+  "scripts": {
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
+    "eslint": "^10.6.0",
+    "globals": "^17.7.0",
+    "happy-dom": "^20.10.6",
+    "prettier": "^3.9.4",
+    "vitest": "^4.1.9"
+  }
 }

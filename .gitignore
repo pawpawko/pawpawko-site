@@ -22,6 +22,10 @@ scripts/.venv/
 # Node
 node_modules/
 
+# Test output
+test-results/
+playwright-report/
+
 # Logs
 *.log
 

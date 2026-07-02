@@ -20,11 +20,13 @@
 
 // --- Auth helpers ---
 window.PK = {
-  // HTML/attribute output escaper — single source of truth. Page modules alias
-  // this (e.g. `const escapeHtml = window.PK.escapeHtml`). escapeAttr is a safe
-  // superset (also escapes & and ') so it's fine in quoted attribute values.
-  escapeHtml: (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
-  escapeAttr: (s) => window.PK.escapeHtml(s),
+  // HTML/attribute output escaper — implementation lives in js/escape.js
+  // (standalone so unit tests can import it; loaded right before this file).
+  // Page modules alias these (e.g. `const escapeHtml = window.PK.escapeHtml`).
+  // escapeAttr is a safe superset (also escapes & and ') so it's fine in
+  // quoted attribute values.
+  escapeHtml: (s) => window.escapeHtml(s),
+  escapeAttr: (s) => window.escapeHtml(s),
 
   async currentUser() {
     if (!window.SB_READY) return null;
