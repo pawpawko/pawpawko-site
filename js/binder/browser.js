@@ -4,7 +4,8 @@
 
 import { state } from './state.js';
 import { escapeHtml, wireImgFallbacks, OPTCG_COLORS, OPTCG_TYPES, OPTCG_ATTRIBUTES, OPTCG_RARITIES, POKEMON_TYPES, POKEMON_SUPERTYPES, POKEMON_SUBTYPES, POKEMON_RARITIES, POKEMON_HP_BUCKETS, CYBERPUNK_COLORS, CYBERPUNK_TYPES, CYBERPUNK_RARITIES, CYBERPUNK_RAM, CYBERPUNK_TAGS } from './helpers.js';
-import { filterBinderListings, openAddListing, wireAddListingModal } from './index.js';
+import { openAddListing, wireAddListingModal } from './modal.js';
+import { filterBinderListings } from './index.js';
 
 // ------------------- Card browser -------------------
 
