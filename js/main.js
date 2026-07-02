@@ -136,8 +136,12 @@ renderAuthButton();
 
 // ---- Dark mode toggle ----
 // Variant C "Charcoal Festival". The pref is applied pre-paint by the inline
-// <head> script (no flash); here we inject the toggle into the profile menu and
-// keep <html data-theme>, localStorage, and the control label in sync.
+// <head> script (no flash); here we inject the controls and keep
+// <html data-theme>, localStorage, and the control states in sync.
+// Three controls share the .theme-toggle aria-checked sync:
+//   - profile dropdown row (desktop, signed in)
+//   - moon/sun nav icon (desktop, signed out — hidden by html.is-signed-in)
+//   - mobile drawer row (everyone; the profile dropdown doesn't exist there)
 const THEME_KEY = 'pawpaw:theme';
 function currentTheme() {
   return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
@@ -146,48 +150,82 @@ function applyTheme(theme) {
   if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
   else document.documentElement.removeAttribute('data-theme');
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
-  // Reflect state on the visual switch (gold + knob-right when dark).
+  // Reflect state on the visual switches (gold + knob-right when dark).
   document.querySelectorAll('.theme-toggle').forEach((t) => {
     t.setAttribute('aria-checked', String(theme === 'dark'));
   });
 }
-function injectThemeToggle() {
-  const dd = document.getElementById('navProfileDropdown');
-  if (!dd || dd.querySelector('.theme-toggle')) return;
-
-  // Switch styling injected here so it doesn't depend on css/styles.css.
-  if (!document.getElementById('themeToggleStyle')) {
-    const st = document.createElement('style');
-    st.id = 'themeToggleStyle';
-    st.textContent =
-      '.theme-toggle{display:flex;align-items:center;justify-content:space-between;gap:1rem;}' +
-      '.theme-switch{position:relative;flex:none;width:40px;height:20px;border-radius:999px;background:rgba(127,127,127,.45);transition:background .2s ease;}' +
-      '.theme-toggle[aria-checked="true"] .theme-switch{background:var(--accent);}' +
-      '.theme-switch-knob{position:absolute;top:3px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.45);transition:transform .2s ease;}' +
-      '.theme-toggle[aria-checked="true"] .theme-switch-knob{transform:translateX(20px);}';
-    document.head.appendChild(st);
-  }
-
-  const divider = document.createElement('div');
-  divider.className = 'nav-profile-divider';
+// Toggle styling injected here so it doesn't depend on css/styles.css.
+function ensureThemeStyles() {
+  if (document.getElementById('themeToggleStyle')) return;
+  const st = document.createElement('style');
+  st.id = 'themeToggleStyle';
+  st.textContent =
+    '.theme-toggle{display:flex;align-items:center;justify-content:space-between;gap:1rem;}' +
+    '.theme-switch{position:relative;flex:none;width:40px;height:20px;border-radius:999px;background:rgba(127,127,127,.45);transition:background .2s ease;}' +
+    '.theme-toggle[aria-checked="true"] .theme-switch{background:var(--accent);}' +
+    '.theme-switch-knob{position:absolute;top:3px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.45);transition:transform .2s ease;}' +
+    '.theme-toggle[aria-checked="true"] .theme-switch-knob{transform:translateX(20px);}' +
+    // Signed-out nav icon: same round chrome as .nav-profile-icon; both auth
+    // states ship and html.is-signed-in decides, like the Sign In button.
+    '.nav-theme-btn{display:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;align-items:center;justify-content:center;padding:0;margin-right:0.6rem;transition:var(--transition);}' +
+    'html:not(.is-signed-in) .nav-auth .nav-theme-btn{display:inline-flex;}' +
+    '.nav-theme-btn:hover,.nav-theme-btn:focus{border-color:var(--accent);color:var(--accent);outline:none;}' +
+    '.nav-theme-btn .theme-icon-sun{display:none;}' +
+    'html[data-theme="dark"] .nav-theme-btn .theme-icon-sun{display:block;}' +
+    'html[data-theme="dark"] .nav-theme-btn .theme-icon-moon{display:none;}' +
+    '.nav-mobile-theme{font-family:var(--font-serif);font-weight:700;font-size:1.1rem;letter-spacing:0.1em;color:var(--text-primary);background:none;border:none;cursor:pointer;}';
+  document.head.appendChild(st);
+}
+function makeThemeControl(className, innerHTML) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'nav-profile-menu-item theme-toggle';
+  btn.className = className + ' theme-toggle';
   btn.setAttribute('role', 'switch');
   btn.setAttribute('aria-checked', 'false');
   btn.setAttribute('aria-label', 'Dark mode');
-  btn.innerHTML = '<span class="theme-toggle-label">Dark Mode</span><span class="theme-switch" aria-hidden="true"><span class="theme-switch-knob"></span></span>';
-  // Insert above the existing divider that precedes "Log Out".
-  const firstDivider = dd.querySelector('.nav-profile-divider');
-  dd.insertBefore(divider, firstDivider || null);
-  dd.insertBefore(btn, firstDivider || null);
+  btn.innerHTML = innerHTML;
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
   });
-  applyTheme(currentTheme());
+  return btn;
+}
+const THEME_SWITCH_HTML =
+  '<span class="theme-toggle-label">Dark Mode</span><span class="theme-switch" aria-hidden="true"><span class="theme-switch-knob"></span></span>';
+function injectThemeToggle() {
+  const dd = document.getElementById('navProfileDropdown');
+  if (!dd || dd.querySelector('.theme-toggle')) return;
+  ensureThemeStyles();
+  const divider = document.createElement('div');
+  divider.className = 'nav-profile-divider';
+  const btn = makeThemeControl('nav-profile-menu-item', THEME_SWITCH_HTML);
+  // Insert above the existing divider that precedes "Log Out".
+  const firstDivider = dd.querySelector('.nav-profile-divider');
+  dd.insertBefore(divider, firstDivider || null);
+  dd.insertBefore(btn, firstDivider || null);
+}
+function injectSignedOutThemeButton() {
+  const navAuth = document.getElementById('navAuth');
+  if (!navAuth || navAuth.querySelector('.nav-theme-btn')) return;
+  ensureThemeStyles();
+  const btn = makeThemeControl(
+    'nav-theme-btn',
+    '<svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>' +
+    '<svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
+  );
+  navAuth.insertBefore(btn, navAuth.firstChild);
+}
+function injectMobileThemeToggle() {
+  const drawer = document.getElementById('navMobile');
+  if (!drawer || drawer.querySelector('.nav-mobile-theme')) return;
+  ensureThemeStyles();
+  drawer.appendChild(makeThemeControl('nav-mobile-theme', THEME_SWITCH_HTML));
 }
 injectThemeToggle();
+injectSignedOutThemeButton();
+injectMobileThemeToggle();
+applyTheme(currentTheme());
 
 // ---- Notifications (bell + dropdown) ----
 // Injected into the nav for signed-in users so it lives on every page without
