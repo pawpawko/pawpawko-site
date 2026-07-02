@@ -1,0 +1,25 @@
+name: RLS probe
+
+on:
+  schedule:
+    - cron: '0 10 * * 1' # weekly, Mondays 10:00 UTC
+  workflow_dispatch:
+
+jobs:
+  rls-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Run RLS regression probe against production
+        run: npm run rls-probe
+        env:
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
