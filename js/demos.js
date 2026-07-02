@@ -3,7 +3,7 @@
 // embedded real binder.html running in ?demo mode (in-memory binder, no saves)
 // — One Piece and Pokémon. Slide between them with the arrows / dots. Iframes
 // are only loaded once the signed-out preview is shown, and each is sized to
-// its content via a postMessage from binder-view.js.
+// its content via a postMessage from js/binder/demo.js.
 // (The decks demo is handled by decks.js in signed-out "demo mode".)
 // ============================================
 (function () {

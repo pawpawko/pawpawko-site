@@ -1,0 +1,5 @@
+# js/binder/ — binder.html view modules
+
+- `index.js` is the entry (`<script type="module">` in binder.html): boot guards + init (binder/profile load, header, meta rows, share popover), the listings core (loadListings, render pipeline, tiles, deck filter, binder-side filtering, edit handlers, wishlist "GOT IT"). The split-out sections: `helpers.js`, `state.js`, `demo.js` (signed-out ?demo binder + the my-binders.html carousel postMessage), `aesthetics.js` (rearrange mode: sorts, drag-and-drop, move-to-page), `search.js` (non-owner "Search this binder"), `browser.js` (edit-mode card browser + filter dropdowns), `modal.js` (add-to-binder modal), `lightbox.js` (tap-to-expand + swipe), `collab.js` (shared-binder co-owners + realtime live-sync).
+- Cross-module mutable state lives in `state.js` as one exported `state` object (`state.allListings`, `state.currentPage`, …) — a 1:1 mirror of the old IIFE top-block plus the mid-file lets that cross module seams; window globals (PK, sb, config) still come from the classic scripts, which always run before module scripts.
+- Modules are deferred — the DOM exists at import time.

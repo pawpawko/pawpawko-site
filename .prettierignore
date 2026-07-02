@@ -10,7 +10,7 @@ scripts/
 .github/
 css/
 js/account.js
-js/binder-view.js
+js/binder/
 js/config.js
 js/decks/
 js/demos.js

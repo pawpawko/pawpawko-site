@@ -45,14 +45,15 @@ export default [
       // keep visibility without failing the build.
       'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
       // Flags a couple of build-up-then-reassign spots in existing app code
-      // (js/main.js, js/binder-view.js); not worth rewriting live code for.
+      // (js/main.js, js/binder/index.js); not worth rewriting live code for.
       'no-useless-assignment': 'off',
     },
   },
   {
-    // js/decks/ is native ES modules (decks.html loads js/decks/index.js via
-    // <script type="module">); everything else under js/ stays classic scripts.
-    files: ['js/decks/**/*.js'],
+    // js/decks/ and js/binder/ are native ES modules (decks.html / binder.html
+    // load their index.js via <script type="module">); everything else under
+    // js/ stays classic scripts.
+    files: ['js/decks/**/*.js', 'js/binder/**/*.js'],
     languageOptions: {
       sourceType: 'module',
     },
