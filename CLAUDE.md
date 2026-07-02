@@ -19,6 +19,10 @@ A UserPromptSubmit hook auto-injects current focus + worklog + roadmap into the 
 
 Manual: `python -m http.server 8000` from this directory.
 
+## Making changes
+
+- Add only what was asked. When implementing something, don't tack on unrequested comments, helper/explanatory copy, docs, config, or extra options — match the surrounding file's style and stop. (UI/marketing copy has its own rule: name a function, don't narrate it — see `feedback_pawpawko_concise_ui_copy.md`.)
+
 ## Don't
 
 - Don't commit `scripts/.env` (already in `.gitignore`).

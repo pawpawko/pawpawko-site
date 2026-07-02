@@ -25,8 +25,11 @@
   let leaderArts = [];        // base + _p alt-art prints of the leader
   let artIdx = 0;             // current art (persisted per deck in localStorage)
   const artKey = (deckId) => `pawpaw:deckArt:${deckId}`;
-  let cardArt = {};           // base card code -> chosen alt-art row (deck-grid display override)
+  let cardArt = {};           // base card code -> print row shown on the grid tile (arrow override, else art_mix majority)
+  let artOverride = {};       // base card code -> print code picked with the zoom arrows (per-user display pref, localStorage)
   const cardArtKey = (deckId) => `pawpaw:deckCardArt:${deckId}`;
+  let printInfo = {};         // print card_code -> cards row (images) for prints referenced by art_mix / overrides
+  let ARTMIX_OK = true;       // flips false when deck_cards.art_mix isn't migrated yet (feature stays dark)
   let deckCards = [];         // deck_cards rows
   let cardInfo = {};          // card_code -> cards row
   let ownedElsewhere = {};    // base card_code -> { qty, binders:[name] } across your non-wishlist binders
@@ -53,6 +56,10 @@
 
   const isBase = (code) => !/_p\d+$/i.test(code);
   const baseCode = (code) => String(code).split('_')[0];
+  // art_mix: {alt print code -> copies} on a deck_cards row; base copies are
+  // implied (quantity - sum). '{}'/absent = all base.
+  const artMixOf = (r) => (r && r.art_mix && typeof r.art_mix === 'object') ? r.art_mix : {};
+  const altCountOf = (r) => Object.values(artMixOf(r)).reduce((s, n) => s + (n > 0 ? n : 0), 0);
   // One Piece color letters (U = Blue, since B is taken by Black). Used for the
   // default deck name: "Green/Blue Uta" -> "GU Uta Deck".
   const COLOR_ABBREV = { Red: 'R', Green: 'G', Blue: 'U', Purple: 'P', Black: 'B', Yellow: 'Y' };
@@ -148,6 +155,7 @@
     $('ndFormat').addEventListener('click', () => searchLeaders());
     $('edFormat').addEventListener('click', onFormatClick);
     $('edListingType').addEventListener('click', onListingTypeClick);
+    cpInit();  // wire the Cyberpunk TCG module (new-deck game toggle + its editor)
 
     // Browser Back/Forward moves between the deck list and the editor.
     window.addEventListener('popstate', () => {
@@ -172,8 +180,8 @@
   async function startDemo() {
     deck = { id: '__demo__', name: 'GU Monkey.D.Luffy Deck', leader_card_code: 'OP16-022', format: 'standard', user_id: user.id, is_public: false };
     isDeckOwner = true;
-    ownedElsewhere = {}; cardArt = {}; leaderArts = [];
-    deckCards = DEMO_DECK.map(([card_code, quantity, owned]) => ({ card_code, quantity, owned }));
+    ownedElsewhere = {}; cardArt = {}; artOverride = {}; leaderArts = [];
+    deckCards = DEMO_DECK.map(([card_code, quantity, owned]) => ({ card_code, quantity, owned, art_mix: {} }));
     bench = DEMO_BENCH.map(b => ({ code: b.code, qty: b.qty, owned: b.owned }));
     const codes = deckCards.map(r => r.card_code).concat(bench.map(b => b.code));
     const [{ data: L }, { data: cs }] = await Promise.all([
@@ -182,6 +190,24 @@
     ]);
     leaderCard = L || null;
     (cs || []).forEach(c => { cardInfo[c.card_code] = c; });
+
+    // Seed one stack as base+alt mixed so the composition pips/fan show in the
+    // demo (picks the first deck card that actually has an alt print in prod).
+    try {
+      const { data: prints } = await window.sb.from('cards')
+        .select('card_code,image_url,image_url_lg').eq('game', GAME)
+        .or(deckCards.map(r => `card_code.like.${r.card_code}_p*`).join(','));
+      const byBase = {};
+      (prints || []).forEach(p => {
+        printInfo[p.card_code] = p;
+        const b = baseCode(p.card_code);
+        (byBase[b] = byBase[b] || []).push(p.card_code);
+      });
+      const target = deckCards.find(r => r.quantity >= 3 && byBase[r.card_code])
+        || deckCards.find(r => r.quantity >= 2 && byBase[r.card_code]);
+      if (target) target.art_mix = { [byBase[target.card_code].sort()[0]]: 2 };
+    } catch (e) {}
+    rebuildCardArt();
 
     // Drop the real editor into the signed-out preview (headline · editor · CTA).
     const sop = $('signedOutPreview');
@@ -195,8 +221,17 @@
 
     $('edDeckName').value = deck.name; $('edDeckName').readOnly = true;
     setPill('edFormat', deck.format);
-    $('edArtBtn').style.display = 'none';
-    $('edLeaderImg').src = (leaderCard && (leaderCard.image_url_lg || leaderCard.image_url)) || '';
+
+    // Leader alt arts: same swap as signed-in (in-memory only in the demo).
+    const { data: lArts } = await window.sb
+      .from('cards').select('card_code,image_url,image_url_lg')
+      .eq('game', GAME).like('card_code', deck.leader_card_code + '%');
+    const lRe = new RegExp(`^${deck.leader_card_code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
+    leaderArts = (lArts || []).filter(c => lRe.test(c.card_code))
+      .sort((a, b) => a.card_code.localeCompare(b.card_code));
+    artIdx = 0;
+    $('edArtBtn').style.display = leaderArts.length > 1 ? '' : 'none';
+    applyLeaderArt();
     $('edPublishOpts').style.display = 'none';
 
     renderDeck();
@@ -232,6 +267,12 @@
   // ---------------- deck list ----------------
 
   function openNewDeck() {
+    // Reset to the default (One Piece) create view; a registered TCG module
+    // (e.g. cyberpunk) swaps the panel via the #ndGame toggle.
+    setPill('ndGame', 'optcg');
+    $('ndOptcgCreate').style.display = '';
+    $('ndCyberpunkCreate').style.display = 'none';
+    if (window.cpResetCreate) window.cpResetCreate();
     $('ndOverlay').style.display = '';
     $('leaderSearch').focus();
   }
@@ -242,6 +283,7 @@
     $('leaderSearch').value = '';
     $('ndImport').value = '';
     $('newDeckError').textContent = '';
+    if (window.cpResetCreate) window.cpResetCreate();
   }
 
   async function loadDecks() {
@@ -278,8 +320,10 @@
 
     const artOf = (d) => localStorage.getItem(artKey(d.id));
     const codes = [...new Set(decks.flatMap(d => [d.leader_card_code, artOf(d)].filter(Boolean)))];
+    // No game filter: codes are prefix-disjoint across games (OP…/ST…/cb-…),
+    // so this returns the right leader/legend art for decks of any TCG.
     const { data: leaders } = await window.sb
-      .from('cards').select('card_code,name,color,image_url').eq('game', GAME).in('card_code', codes);
+      .from('cards').select('card_code,name,color,image_url').in('card_code', codes);
     const leaderMap = {};
     (leaders || []).forEach(c => { leaderMap[c.card_code] = c; });
 
@@ -403,6 +447,7 @@
     if (!fromPop) history.replaceState(null, '', 'decks.html');
     unsubscribeDeckCards();        // drop the editor's Realtime channel
     $('editorWrap').style.display = 'none';
+    $('cpEditorWrap').style.display = 'none';   // hide any registered TCG-module editor
     $('decksWrap').style.display = '';
     deck = null;
     loadDecks();
@@ -424,6 +469,20 @@
     if (seq !== openSeq) return;             // a newer openDeck() superseded this one
     if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
     deck = d;
+
+    // TCG-module dispatch: a non-default game (e.g. cyberpunk) has its own
+    // self-contained editor. One Piece has no module → falls through to the
+    // unchanged code below, so it can never regress when a game is added.
+    const mod = DECK_MODULES[d.game];
+    if (mod) {
+      const murl = `decks.html?deck=${d.id}`;
+      if (push) history.pushState(null, '', murl); else history.replaceState(null, '', murl);
+      unsubscribeDeckCards();
+      $('decksWrap').style.display = 'none';
+      $('editorWrap').style.display = 'none';
+      return mod.open(d, seq);
+    }
+
     isDeckOwner = (d.user_id === user.id);   // collaborators co-edit but can't publish/delete
     // Owner-only controls: publishing and deleting stay with the deck owner.
     $('edEyeBtn').closest('.eye-wrap').style.display = isDeckOwner ? '' : 'none';
@@ -459,20 +518,11 @@
     $('edPublishOpts').style.display = 'none';
     $('edError').textContent = '';
 
-    // Restore per-card alt-art choices set in the magnified view (deck-grid
-    // display overrides); fetch the chosen prints' images so the grid shows them.
+    // Tile display art: explicit arrow choices (per-user, localStorage) beat
+    // the art_mix majority print; print images are fetched with printInfo.
     cardArt = {};
-    try {
-      const saved = JSON.parse(localStorage.getItem(cardArtKey(d.id)) || '{}');
-      const codes = Object.values(saved).filter(x => /_p\d+$/i.test(String(x)));
-      if (codes.length) {
-        const { data: artRows } = await window.sb
-          .from('cards').select('card_code,image_url,image_url_lg').eq('game', GAME).in('card_code', codes);
-        const byCode = {};
-        (artRows || []).forEach(c => { byCode[c.card_code] = c; });
-        Object.keys(saved).forEach(base => { const row = byCode[saved[base]]; if (row) cardArt[base] = row; });
-      }
-    } catch (e) {}
+    artOverride = {};
+    try { artOverride = JSON.parse(localStorage.getItem(cardArtKey(d.id)) || '{}') || {}; } catch (e) {}
 
     if (seq !== openSeq) return;
     await loadOwnedElsewhere();
@@ -595,12 +645,38 @@
     refresh();
   }
 
-  // Persist the per-card alt-art overrides for this deck (base -> chosen code).
-  function persistCardArt() {
-    if (!deck) return;
-    const map = {};
-    Object.keys(cardArt).forEach(base => { if (cardArt[base]) map[base] = cardArt[base].card_code; });
-    try { localStorage.setItem(cardArtKey(deck.id), JSON.stringify(map)); } catch (e) {}
+  // Fetch image rows for every print referenced by art_mix or an arrow override.
+  async function ensurePrintInfo() {
+    const want = new Set();
+    deckCards.forEach(r => {
+      Object.keys(artMixOf(r)).forEach(k => { if (!printInfo[k]) want.add(k); });
+      const ov = artOverride[r.card_code];
+      if (ov && ov !== r.card_code && !printInfo[ov]) want.add(ov);
+    });
+    if (!want.size) return;
+    const { data } = await window.sb.from('cards')
+      .select('card_code,image_url,image_url_lg').eq('game', GAME).in('card_code', [...want]);
+    (data || []).forEach(p => { printInfo[p.card_code] = p; });
+  }
+  function persistArtOverride() {
+    if (DEMO || !deck) return;
+    try { localStorage.setItem(cardArtKey(deck.id), JSON.stringify(artOverride)); } catch (e) {}
+  }
+  // Derive each tile's display print: an explicit arrow choice (including
+  // "base") wins; otherwise the art_mix print with the most copies (ties to base).
+  function rebuildCardArt() {
+    cardArt = {};
+    deckCards.forEach(r => {
+      const ov = artOverride[r.card_code];
+      if (ov) {
+        if (ov !== r.card_code && printInfo[ov]) cardArt[r.card_code] = printInfo[ov];
+        return;
+      }
+      const mix = artMixOf(r);
+      let bestCode = null, bestN = r.quantity - altCountOf(r); // base copy count
+      Object.keys(mix).sort().forEach(k => { if (mix[k] > bestN) { bestN = mix[k]; bestCode = k; } });
+      if (bestCode && printInfo[bestCode]) cardArt[r.card_code] = printInfo[bestCode];
+    });
   }
 
   function applyLeaderArt() {
@@ -611,7 +687,7 @@
   function cycleLeaderArt() {
     if (leaderArts.length < 2 || !deck) return;
     artIdx = (artIdx + 1) % leaderArts.length;
-    localStorage.setItem(artKey(deck.id), leaderArts[artIdx].card_code);
+    if (!DEMO) localStorage.setItem(artKey(deck.id), leaderArts[artIdx].card_code);
     applyLeaderArt();
   }
 
@@ -644,8 +720,18 @@
 
   async function reloadDeckCards() {
     const myId = deck && deck.id;          // the deck we're loading for
-    const { data: rows } = await window.sb
-      .from('deck_cards').select('card_code,quantity,owned').eq('deck_id', myId);
+    let rows = null;
+    if (ARTMIX_OK) {
+      const res = await window.sb.from('deck_cards')
+        .select('card_code,quantity,owned,art_mix').eq('deck_id', myId);
+      if (res.error) ARTMIX_OK = false;    // pre-migration: column missing → feature stays dark
+      else rows = res.data;
+    }
+    if (!rows) {
+      const res = await window.sb.from('deck_cards')
+        .select('card_code,quantity,owned').eq('deck_id', myId);
+      rows = res.data;
+    }
     if (!deck || deck.id !== myId) return; // deck switched mid-load — drop stale data
     deckCards = rows || [];
     const missing = deckCards.map(r => r.card_code).filter(c => !cardInfo[c]);
@@ -656,6 +742,9 @@
       (cards || []).forEach(c => { cardInfo[c.card_code] = c; });
     }
     if (!deck || deck.id !== myId) return; // re-check after the second await
+    await ensurePrintInfo();
+    if (!deck || deck.id !== myId) return;
+    rebuildCardArt();
     renderDeck();
     refreshValidity();
     cardZoom.refresh();
@@ -673,12 +762,13 @@
     return `<span class="card-act card-zoom" role="button" aria-label="Enlarge card">${ZOOM_ICON}</span>`;
   }
   const cardZoom = (() => {
-    // Swap-arrows icon for the alt-art toggle.
+    // Swap-arrows icon: cycles which print the BIG image shows (preview only —
+    // per-copy composition is edited in the fan below).
     const ART_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
     let ov = null;
     let code = null;   // card currently magnified
     let arts = [];     // base print + its _p alt-art variants
-    let artIdx = 0;
+    let artIdx = 0;    // print the big image currently shows
     let zone = 'deck'; // 'deck' | 'bench' — which list the magnified card edits
     const artsCache = {};
     function hide() {
@@ -785,11 +875,81 @@
         inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
       });
     }
+    // Per-copy fan: one mini card per physical copy, fanned like a hand of
+    // cards. Tapping a copy cycles it through the card's prints (base → alts);
+    // gold edge = alt-art copy. Composition persists in deck_cards.art_mix.
+    function copiesOf(r) {
+      const mix = artMixOf(r);
+      const out = [];
+      Object.keys(mix).sort().forEach(k => {
+        for (let i = 0; i < mix[k] && out.length < r.quantity; i++) out.push(k);
+      });
+      while (out.length < r.quantity) out.unshift(r.card_code); // base copies lead
+      return out;
+    }
+    function renderFan() {
+      if (!ov) return;
+      const box = ov.querySelector('.cz-fan');
+      const pipBox = ov.querySelector('.cz-pips');
+      box.innerHTML = '';
+      pipBox.innerHTML = '';
+      const r = (zone === 'deck' && code) ? deckCards.find(x => x.card_code === code) : null;
+      const usable = r && arts.length > 1 && r.quantity >= 1 && r.quantity <= 8 && (DEMO || ARTMIX_OK);
+      box.hidden = !usable;
+      pipBox.hidden = !usable;
+      if (!usable) return;
+      const copies = copiesOf(r);
+      // Dots mirror the fan copy-for-copy: gold = alt-art copy, hollow = base.
+      copies.forEach(pc => {
+        const s = document.createElement('span');
+        s.className = 'cz-pip ' + (pc !== r.card_code ? 'alt' : 'base');
+        pipBox.appendChild(s);
+      });
+      const mid = (copies.length - 1) / 2;
+      const spread = copies.length > 5 ? 4 : 7;
+      copies.forEach((printCode, i) => {
+        const a = arts.find(x => x.card_code === printCode) || arts[0];
+        const d = document.createElement('div');
+        d.className = 'cz-fan-card' + (printCode !== r.card_code ? ' alt' : '');
+        d.style.setProperty('--fan-rot', ((i - mid) * spread).toFixed(1) + 'deg');
+        d.style.setProperty('--fan-lift', (Math.abs(i - mid) * Math.abs(i - mid) * 3).toFixed(1) + 'px');
+        d.style.backgroundImage = `url("${(a && a.image_url) || ''}")`;
+        d.title = printCode;
+        d.setAttribute('role', 'button');
+        d.setAttribute('aria-label', printCode);
+        d.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const cur = arts.findIndex(x => x.card_code === printCode);
+          copies[i] = arts[(Math.max(0, cur) + 1) % arts.length].card_code;
+          const mix = {};
+          copies.forEach(c => { if (c !== r.card_code) mix[c] = (mix[c] || 0) + 1; });
+          setArtMix(r.card_code, mix);
+        });
+        box.appendChild(d);
+      });
+    }
+    // Big-image art swap: cycles the large image through the card's prints and
+    // KEEPS the choice on the deck-grid tile (explicit pick beats the art_mix
+    // majority; per-user, localStorage). Composition itself lives in the fan.
     function applyArt() {
       if (!ov) return;
       const a = arts[artIdx];
       if (a) ov.querySelector('.cz-img').src = a.image_url_lg || a.image_url || '';
       ov.querySelector('.cz-art').hidden = arts.length < 2; // only when alts exist
+    }
+    function cycleArt() {
+      if (arts.length < 2) return;
+      artIdx = (artIdx + 1) % arts.length;
+      applyArt();
+      const a = arts[artIdx];
+      if (zone !== 'deck' || !code || !a) return;
+      const r = deckCards.find(x => x.card_code === code);
+      if (!r) return;
+      if (!isBase(a.card_code)) printInfo[a.card_code] = a;
+      artOverride[r.card_code] = a.card_code;
+      persistArtOverride();
+      rebuildCardArt();
+      renderDeck();
     }
     // Base print + _p variants for a card number (cached per session).
     async function loadArts(base) {
@@ -802,23 +962,12 @@
       artsCache[base] = list;
       return list;
     }
-    function cycleArt() {
-      if (arts.length < 2) return;
-      artIdx = (artIdx + 1) % arts.length;
-      applyArt();
-      // Persist the choice and reflect it on the deck grid (index 0 = base = no override).
-      const base = String(arts[artIdx].card_code).split('_')[0];
-      if (artIdx === 0) delete cardArt[base];
-      else cardArt[base] = arts[artIdx];
-      persistCardArt();
-      renderDeck();
-    }
     function ensure() {
       if (ov) return ov;
       ov = document.createElement('div');
       ov.className = 'card-zoom-overlay';
       ov.hidden = true;
-      ov.innerHTML = '<div class="cz-box"><div class="cz-imgwrap"><img class="cz-img" alt=""><span class="cz-art" role="button" aria-label="Swap art" hidden>' + ART_ICON + '</span></div><div class="cz-edit"></div></div>';
+      ov.innerHTML = '<div class="cz-box"><div class="cz-imgwrap"><img class="cz-img" alt=""><span class="cz-art" role="button" aria-label="Swap art" hidden>' + ART_ICON + '</span></div><div class="cz-fan" hidden></div><div class="cz-pips" hidden></div><div class="cz-edit"></div></div>';
       ov.addEventListener('click', e => { if (e.target === ov) hide(); }); // backdrop only
       ov.querySelector('.cz-art').addEventListener('click', e => { e.stopPropagation(); cycleArt(); });
       document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
@@ -828,7 +977,7 @@
     async function show(c, opts) {
       zone = (opts && opts.zone) || 'deck';
       const base = String(c.card_code).split('_')[0];
-      const override = cardArt[base]; // open on the currently-chosen art, if any
+      const override = cardArt[base]; // open on the tile's display print, if any
       const url = (override && (override.image_url_lg || override.image_url)) || (c && (c.image_url_lg || c.image_url));
       if (!url) return;
       const el = ensure();
@@ -836,15 +985,19 @@
       arts = []; artIdx = 0;
       el.querySelector('.cz-img').src = url;
       el.querySelector('.cz-art').hidden = true;
+      el.querySelector('.cz-fan').hidden = true;
+      el.querySelector('.cz-pips').hidden = true;
       renderEdit();
       el.hidden = false;
-      // Reveal the alt-art swap overlay once we know more than the base exists.
+      // Reveal the swap arrows + per-copy fan once alt prints exist.
       const list = await loadArts(base);
       if (code !== c.card_code) return; // another card opened during the await
       arts = list;
-      const chosen = override ? override.card_code : c.card_code;
-      artIdx = Math.max(0, list.findIndex(a => a.card_code === chosen));
+      list.forEach(a => { if (!isBase(a.card_code)) printInfo[a.card_code] = a; });
+      const shown = override ? override.card_code : c.card_code;
+      artIdx = Math.max(0, list.findIndex(a => a.card_code === shown));
       applyArt();
+      renderFan();
     }
     // Keep the open lightbox in sync after a deck-cards reload; close it if the
     // magnified card was removed (qty stepped to 0).
@@ -857,6 +1010,7 @@
       }
       if (!deckCards.find(x => x.card_code === code)) { hide(); return; }
       renderEdit();
+      renderFan();
     }
     return { show, refresh };
   })();
@@ -1019,6 +1173,19 @@
     });
   }
   function renderDeckLocal() { renderDeck(); renderBrowser(); cardZoom.refresh(); }
+  // Persist a card's per-copy art composition (alt print code -> copies).
+  function setArtMix(code, mix) {
+    const row = deckCards.find(r => r.card_code === code);
+    if (!row) return;
+    row.art_mix = mix;
+    rebuildCardArt();
+    renderDeckLocal();
+    queueDeckWrite(async () => {
+      const { error } = await window.sb.from('deck_cards')
+        .update({ art_mix: mix }).eq('deck_id', deck.id).eq('card_code', code);
+      if (error) throw error;
+    });
+  }
   function localSetRow(code, fields) {
     const row = deckCards.find(r => r.card_code === code);
     if (row) Object.assign(row, fields);
@@ -2003,11 +2170,6 @@
         renderDeck();
       });
     }
-    const fill = $('edCountFill');
-    fill.style.width = `${Math.min(100, (total / 50) * 100)}%`;
-    fill.classList.toggle('over', total > 50);
-    fill.classList.toggle('ok', total <= 50 && v.valid && v.owned_complete); // green only when valid + fully owned
-
     const badges = [];
     // "deck valid" reads warm orangish-green until fully owned, then full green.
     if (v.valid) badges.push(`<span class="deck-badge ${v.owned_complete ? 'ok' : 'partial'}">deck valid</span>`);
@@ -2413,6 +2575,406 @@
     }
     return true;
   }
+
+  // ============================================================
+  // Cyberpunk TCG deck module (registered TCG plugin — see DECK_MODULES)
+  // ============================================================
+  // Fully self-contained: its own DOM (#cpEditorWrap / #cpBrowser), its own
+  // state and DB writes. Reuses only stateless shared helpers ($, esc,
+  // debounce, pillValue, setPill, user, window.sb) and the game-agnostic RPCs
+  // (deck_validity, publish_deck, unpublish_deck). Adding another TCG follows
+  // this same shape and touches NOTHING here or in the One Piece path.
+  const CP_COLORS = ['Red', 'Blue', 'Green', 'Yellow'];
+  const CP_TYPES = ['Legend', 'Unit', 'Gear', 'Program'];
+  const CP_RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic'];
+  const CP_RAM = [1, 2, 3, 4, 5, 6];
+  const CP_COSTS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const CP_TAGS = ['6th Street', 'Aldecado', 'Arasaka', 'Braindance', 'Corpo', 'Cyberware', 'Doll', 'Drone', 'Extreme', 'Ganger', 'Maelstrom', 'Merc', 'Militech', 'Mox', 'Mystic', 'NCPD', 'Netrunner', 'Nomad', 'Quickhack', 'Raffen Shiv', 'Ripperdoc', 'Rocker', 'Samurai', 'Scavenger', 'Trauma Team', 'Tyger Claws', 'Valentino', 'Vehicle', 'Voodoo Boys', 'Weapon', 'Zetatech'];
+
+  let cpDeck = null, cpOwner = false, cpSeq = 0;
+  let cpLegends = [], cpCards = [], cpInfo = {};
+  let cpChosen = [];         // new-deck legend picks
+  let cpBrowMode = 'card';   // 'card' | 'legend'
+  let cpQueue = Promise.resolve();
+
+  // Per-color RAM cap = sum of the RAM of the Legends sharing that color.
+  function cpCaps() {
+    const caps = {};
+    cpLegends.forEach(l => {
+      const c = cpInfo[l.card_code] || {};
+      if (c.color) caps[c.color] = (caps[c.color] || 0) + (c.ram || 0);
+    });
+    return caps;
+  }
+
+  async function cpOpen(d) {
+    cpDeck = d; cpOwner = (d.user_id === user.id); cpSeq++;
+    $('cpEditorWrap').style.display = '';
+    $('cpDeckName').value = d.name || '';
+    $('cpDeckName').disabled = !cpOwner;
+    $('cpError').textContent = '';
+    $('cpEyeBtn').closest('.eye-wrap').style.display = cpOwner ? '' : 'none';
+    $('cpDeleteBtn').style.display = cpOwner ? '' : 'none';
+    $('cpAddBtn').style.display = cpOwner ? '' : 'none';
+    await cpLoad();
+  }
+
+  async function cpLoad() {
+    if (!cpDeck) return;
+    const seq = cpSeq;
+    const [{ data: legs }, { data: cards }] = await Promise.all([
+      window.sb.from('deck_legends').select('card_code,owned').eq('deck_id', cpDeck.id),
+      window.sb.from('deck_cards').select('card_code,quantity,owned').eq('deck_id', cpDeck.id),
+    ]);
+    if (seq !== cpSeq) return;
+    cpLegends = legs || []; cpCards = cards || [];
+    const codes = [...new Set([...cpLegends.map(l => l.card_code), ...cpCards.map(c => c.card_code)])];
+    cpInfo = {};
+    if (codes.length) {
+      const { data: info } = await window.sb.from('cards')
+        .select('card_code,name,color,cost,ram,type,rarity,image_url')
+        .eq('game', 'cyberpunk').in('card_code', codes);
+      (info || []).forEach(c => { cpInfo[c.card_code] = c; });
+    }
+    if (seq !== cpSeq) return;
+    cpRender();
+    cpRefreshValidity();
+  }
+
+  function cpRender() {
+    const caps = cpCaps();
+    // ---- Legends ----
+    const lg = $('cpLegendsGrid'); lg.innerHTML = '';
+    cpLegends.forEach(l => {
+      const c = cpInfo[l.card_code] || {};
+      const t = document.createElement('div');
+      t.className = 'deck-card-tile' + (l.owned ? '' : ' missing');
+      t.title = `${c.name || l.card_code}${c.color ? ' · ' + c.color : ''}${c.ram != null ? ' · RAM ' + c.ram : ''}`;
+      t.innerHTML =
+        `<img src="${esc(c.image_url || '')}" alt="${esc(c.name || l.card_code)}">
+        <span class="cp-legend-owned">${l.owned ? '✓ owned' : 'need'}</span>` +
+        (cpOwner ? '<div class="card-acts"><button class="card-act cp-lrm" aria-label="Remove Legend">✕</button></div>' : '');
+      if (cpOwner) {
+        t.querySelector('.cp-legend-owned').addEventListener('click', () => cpToggleLegendOwned(l.card_code, l.owned ? 0 : 1));
+        t.querySelector('.cp-lrm').addEventListener('click', () => cpRemoveLegend(l.card_code));
+      }
+      lg.appendChild(t);
+    });
+    $('cpLegendCount').textContent = `(${cpLegends.length}/3)`;
+    $('cpAddLegendBtn').style.display = (cpOwner && cpLegends.length < 3) ? '' : 'none';
+    // ---- RAM caps ----
+    const usable = CP_COLORS.filter(col => caps[col]);
+    $('cpRamCaps').innerHTML = usable.length
+      ? usable.map(col => `<span class="cp-ram-cap">${col}: RAM ≤ ${caps[col]}</span>`).join('')
+      : '<span class="text-muted-line">Add Legends to unlock colors.</span>';
+    // ---- Main deck ----
+    const grid = $('cpDeckGrid'); grid.innerHTML = '';
+    const sorted = cpCards.slice().sort((a, b) =>
+      ((cpInfo[a.card_code] || {}).cost ?? 99) - ((cpInfo[b.card_code] || {}).cost ?? 99)
+      || String(a.card_code).localeCompare(b.card_code));
+    sorted.forEach(r => {
+      const c = cpInfo[r.card_code] || {};
+      const cap = caps[c.color] || 0;
+      const over = (c.ram || 0) > cap;
+      const t = document.createElement('div');
+      t.className = 'deck-card-tile' + (r.owned < r.quantity ? ' missing' : '') + (over ? ' over-cap' : '');
+      t.title = `${c.name || r.card_code} — ${r.quantity} in deck, ${r.owned} owned`
+        + (over ? ` · RAM ${c.ram || 0} over ${c.color} cap ${cap}` : '');
+      t.innerHTML =
+        `<img src="${esc(c.image_url || '')}" alt="${esc(c.name || r.card_code)}">` +
+        (cpOwner ? `<div class="card-acts">
+          <button class="card-act cp-dec" aria-label="Remove one">−</button>
+          <button class="card-act cp-own" aria-label="Mark owned" title="Owned ${r.owned}/${r.quantity}">✓</button>
+          <button class="card-act cp-inc${r.quantity >= 3 ? ' at-cap' : ''}" aria-label="Add one"${r.quantity >= 3 ? ' aria-disabled="true"' : ''}>+</button>
+        </div>` : '') +
+        `<span class="qty-badge"><span class="qty-total">x${r.quantity}</span><span class="qty-missing">x${r.quantity - r.owned}</span></span>`;
+      if (cpOwner) {
+        t.querySelector('.cp-dec').addEventListener('click', () => cpStep(r.card_code, 'qty', -1));
+        t.querySelector('.cp-inc').addEventListener('click', () => { if (r.quantity < 3) cpStep(r.card_code, 'qty', 1); });
+        t.querySelector('.cp-own').addEventListener('click', () => cpStep(r.card_code, 'owned', r.owned < r.quantity ? 1 : -r.quantity));
+      }
+      grid.appendChild(t);
+    });
+  }
+
+  async function cpRefreshValidity() {
+    if (!cpDeck) return;
+    const localTotal = cpCards.reduce((s, r) => s + r.quantity, 0);
+    const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: cpDeck.id });
+    // eye reflects publish state (open eye = public, slashed = hidden)
+    const on = $('cpEyeBtn').querySelector('.eye-on'), off = $('cpEyeBtn').querySelector('.eye-off');
+    if (on && off) { on.style.display = cpDeck.is_public ? '' : 'none'; off.style.display = cpDeck.is_public ? 'none' : ''; }
+    if (!v) { $('cpCounts').textContent = `${localTotal} / 40–50 cards`; return; }
+    const badge = (v.valid && v.owned_complete)
+      ? '<span class="deck-badge ok">valid</span>'
+      : '<span class="deck-badge bad">Cooking</span>';
+    const pub = cpDeck.is_public ? ` <span class="deck-badge pub">${esc(cpDeck.listing_type || 'public')}</span>` : '';
+    $('cpBadges').innerHTML = badge + pub;
+    const probs = (v.problems && v.problems.length)
+      ? `<br><span class="text-muted-line">• ${v.problems.map(esc).join('<br>• ')}</span>` : '';
+    $('cpCounts').innerHTML = `Main deck ${v.total_cards} / 40–50 · owned ${v.owned_cards}, missing ${v.missing_cards}${probs}`;
+  }
+
+  // Optimistic local edit + serialized DB write; a settle reload reconciles
+  // anything the gatekeeper trigger rejected (mirrors the OPTCG write queue).
+  function cpEnqueue(fn) {
+    cpQueue = cpQueue.then(fn).then(() => cpLoad(), (e) => {
+      $('cpError').textContent = (e && e.message) || 'Update failed.';
+      return cpLoad();
+    });
+  }
+
+  function cpStep(code, kind, delta) {
+    if (!cpOwner) return;
+    const row = cpCards.find(r => r.card_code === code);
+    if (!row) return;
+    let q = row.quantity, o = row.owned;
+    if (kind === 'qty') { q = Math.max(0, Math.min(3, q + delta)); o = Math.min(o, q); }
+    else { o = Math.max(0, Math.min(q, o + delta)); }
+    if (q === 0) cpCards = cpCards.filter(r => r.card_code !== code);
+    else { row.quantity = q; row.owned = o; }
+    cpRender();
+    cpEnqueue(async () => {
+      const res = q === 0
+        ? await window.sb.from('deck_cards').delete().eq('deck_id', cpDeck.id).eq('card_code', code)
+        : await window.sb.from('deck_cards').update({ quantity: q, owned: o }).eq('deck_id', cpDeck.id).eq('card_code', code);
+      if (res.error) throw res.error;
+    });
+  }
+
+  function cpAddCard(code) {
+    if (!cpOwner) return;
+    const row = cpCards.find(r => r.card_code === code);
+    if (row) { if (row.quantity < 3) cpStep(code, 'qty', 1); return; }
+    cpCards.push({ card_code: code, quantity: 1, owned: 0 });
+    cpRender();
+    cpEnqueue(async () => {
+      const { error } = await window.sb.from('deck_cards').insert({ deck_id: cpDeck.id, card_code: code, quantity: 1, owned: 0 });
+      if (error) throw error;
+    });
+  }
+
+  async function cpToggleLegendOwned(code, val) {
+    if (!cpOwner) return;
+    await window.sb.from('deck_legends').update({ owned: val }).eq('deck_id', cpDeck.id).eq('card_code', code);
+    cpLoad();
+  }
+
+  async function cpRemoveLegend(code) {
+    if (!cpOwner) return;
+    await window.sb.from('deck_legends').delete().eq('deck_id', cpDeck.id).eq('card_code', code);
+    await cpSyncLeader();
+    cpLoad();
+  }
+
+  // Keep decks.leader_card_code (NOT NULL, must be a Legend) pointed at a
+  // current Legend after edits. Validity reads deck_legends, so this is only to
+  // satisfy the column/FK.
+  async function cpSyncLeader() {
+    const { data: legs } = await window.sb.from('deck_legends').select('card_code').eq('deck_id', cpDeck.id).limit(1);
+    const first = legs && legs[0] && legs[0].card_code;
+    if (first && first !== cpDeck.leader_card_code) {
+      await window.sb.from('decks').update({ leader_card_code: first }).eq('id', cpDeck.id);
+      cpDeck.leader_card_code = first;
+    }
+  }
+
+  async function cpAddLegendCode(code) {
+    const { error } = await window.sb.from('deck_legends').insert({ deck_id: cpDeck.id, card_code: code });
+    if (error) { $('cpbError').textContent = error.message; return; }
+    await cpSyncLeader();
+    await cpLoad();
+    if (cpLegends.length >= 3) cpBrowserClose();
+  }
+
+  async function cpEye() {
+    if (!cpOwner || !cpDeck) return;
+    $('cpError').textContent = '';
+    if (cpDeck.is_public) {
+      await window.sb.rpc('unpublish_deck', { p_deck_id: cpDeck.id });
+      cpDeck.is_public = false; cpDeck.listing_type = null;
+    } else {
+      const { error } = await window.sb.rpc('publish_deck', { p_deck_id: cpDeck.id, p_listing_type: 'trade' });
+      if (error) { $('cpError').textContent = error.message; return; }
+      cpDeck.is_public = true; cpDeck.listing_type = 'trade';
+    }
+    cpRefreshValidity();
+  }
+
+  async function cpDelete() {
+    if (!cpOwner || !cpDeck) return;
+    if (!confirm('Delete this deck? This cannot be undone.')) return;
+    const { error } = await window.sb.from('decks').delete().eq('id', cpDeck.id);
+    if (error) { $('cpError').textContent = error.message; return; }
+    cpDeck = null;
+    showList();
+  }
+
+  async function cpRename() {
+    if (!cpOwner || !cpDeck) return;
+    const n = ($('cpDeckName').value.trim().slice(0, 24)) || 'Cyberpunk Deck';
+    await window.sb.from('decks').update({ name: n }).eq('id', cpDeck.id);
+    cpDeck.name = n;
+  }
+
+  // ---- Cyberpunk card browser (also picks Legends via a mode flag) ----
+  let cpBrowserInited = false;
+  function cpFillSelect(id, values, allLabel) {
+    $(id).innerHTML = `<option value="">${allLabel}</option>`
+      + values.map(v => `<option value="${esc(String(v))}">${esc(String(v))}</option>`).join('');
+  }
+  function cpBrowserInit() {
+    if (cpBrowserInited) return;
+    cpBrowserInited = true;
+    cpFillSelect('cpbColor', CP_COLORS, 'Any');
+    cpFillSelect('cpbType', CP_TYPES, 'All');
+    cpFillSelect('cpbCost', CP_COSTS, 'Any');
+    cpFillSelect('cpbTag', CP_TAGS, 'Any');
+    cpFillSelect('cpbRam', CP_RAM, 'Any');
+    cpFillSelect('cpbRarity', CP_RARITIES, 'Any');
+    ['cpbColor', 'cpbType', 'cpbCost', 'cpbTag', 'cpbRam', 'cpbRarity'].forEach(id => $(id).addEventListener('change', cpBrowserSearch));
+    $('cpbName').addEventListener('input', debounce(cpBrowserSearch, 250));
+    $('cpbClear').addEventListener('click', () => {
+      ['cpbName', 'cpbColor', 'cpbType', 'cpbCost', 'cpbTag', 'cpbRam', 'cpbRarity'].forEach(id => { $(id).value = ''; });
+      cpBrowserSearch();
+    });
+    $('cpbClose').addEventListener('click', cpBrowserClose);
+    $('cpBrowser').addEventListener('click', (e) => { if (e.target === $('cpBrowser')) cpBrowserClose(); });
+  }
+  function cpBrowserOpen(mode) {
+    cpBrowserInit();
+    cpBrowMode = mode;
+    $('cpbTitle').textContent = mode === 'legend' ? 'Add a Legend' : 'Add Cards';
+    $('cpbType').disabled = (mode === 'legend'); // always Legend in legend mode
+    $('cpBrowser').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    cpBrowserSearch();
+  }
+  function cpBrowserClose() {
+    $('cpBrowser').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+  async function cpBrowserSearch() {
+    $('cpbError').textContent = '';
+    let q = window.sb.from('cards')
+      .select('card_code,name,color,cost,ram,type,rarity,image_url').eq('game', 'cyberpunk');
+    if (cpBrowMode === 'legend') q = q.eq('type', 'Legend');
+    else { const t = $('cpbType').value; if (t) q = q.eq('type', t); }
+    const col = $('cpbColor').value; if (col) q = q.eq('color', col);
+    const cost = $('cpbCost').value; if (cost !== '') q = q.eq('cost', parseInt(cost, 10));
+    const tag = $('cpbTag').value; if (tag) q = q.contains('types', [tag]);
+    const ram = $('cpbRam').value; if (ram !== '') q = q.eq('ram', parseInt(ram, 10));
+    const rar = $('cpbRarity').value; if (rar) q = q.eq('rarity', rar);
+    const name = $('cpbName').value.trim();
+    if (name) { const safe = name.replace(/[%,]/g, ''); q = q.or(`name.ilike.%${safe}%,card_code.ilike.%${safe}%`); }
+    const { data, error } = await q.order('color').order('cost').limit(120);
+    const grid = $('cpbGrid'); grid.innerHTML = '';
+    if (error) { $('cpbError').textContent = error.message; return; }
+    let rows = data || [];
+    if (cpBrowMode === 'legend') {            // one entry per Legend name (hide printings)
+      const seen = new Set();
+      rows = rows.filter(c => (seen.has(c.name) ? false : (seen.add(c.name), true)));
+    }
+    $('cpbCount').textContent = rows.length ? `${rows.length} card${rows.length === 1 ? '' : 's'}` : 'No cards match.';
+    rows.forEach(c => {
+      const inDeck = cpBrowMode === 'card' && cpCards.find(r => r.card_code === c.card_code);
+      const tile = document.createElement('button');
+      tile.className = 'cb-tile';
+      tile.title = `${c.name} · ${c.color || ''} · ${c.type || ''}${c.ram != null ? ' · RAM ' + c.ram : ''}`;
+      tile.innerHTML =
+        `<div class="cb-tile-img">${c.image_url
+          ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(c.image_url)}" alt="${esc(c.name || c.card_code)}">`
+          : `<div class="card-placeholder small">${esc(c.card_code)}</div>`}</div>
+        <div class="cb-tile-name">${esc(c.name || '')}${inDeck ? ` <span class="cb-in-deck">x${inDeck.quantity}</span>` : ''}</div>
+        <div class="cb-tile-code">${esc(c.card_code)}</div>`;
+      tile.addEventListener('click', () => {
+        if (cpBrowMode === 'legend') cpAddLegendCode(c.card_code);
+        else { cpInfo[c.card_code] = c; cpAddCard(c.card_code); cpBrowserSearch(); }
+      });
+      grid.appendChild(tile);
+    });
+  }
+
+  // ---- New-deck: Cyberpunk 3-Legend picker ----
+  function cpResetCreate() {
+    cpChosen = [];
+    if ($('legendResults')) $('legendResults').innerHTML = '';
+    if ($('legendSearch')) $('legendSearch').value = '';
+    cpRenderChosen();
+  }
+  window.cpResetCreate = cpResetCreate;
+  function cpRenderChosen() {
+    const box = $('ndLegendsChosen');
+    box.innerHTML = cpChosen.map((c, i) =>
+      `<span class="cp-chip">${esc(c.name)}<button type="button" data-i="${i}" aria-label="Remove">✕</button></span>`).join('');
+    box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      cpChosen.splice(parseInt(b.dataset.i, 10), 1); cpRenderChosen();
+    }));
+    const btn = $('ndCreateCp');
+    btn.disabled = cpChosen.length !== 3;
+    const left = 3 - cpChosen.length;
+    btn.textContent = left === 0 ? 'Create deck' : `Pick ${left} more Legend${left === 1 ? '' : 's'}`;
+  }
+  async function cpSearchLegends() {
+    const qv = $('legendSearch').value.trim();
+    const out = $('legendResults');
+    if (qv.length < 2) { out.innerHTML = ''; return; }
+    const safe = qv.replace(/[%,]/g, '');
+    const { data } = await window.sb.from('cards')
+      .select('card_code,name,color,ram,image_url').eq('game', 'cyberpunk').eq('type', 'Legend')
+      .or(`name.ilike.%${safe}%,card_code.ilike.%${safe}%`).order('name').limit(60);
+    const seen = new Set(); const rows = [];
+    (data || []).forEach(c => { if (!seen.has(c.name)) { seen.add(c.name); rows.push(c); } });
+    out.innerHTML = rows.length ? '' : '<li style="cursor:default;opacity:.6;">No Legends found.</li>';
+    rows.slice(0, 25).forEach(c => {
+      const li = document.createElement('li');
+      li.innerHTML = `<img src="${esc(c.image_url || '')}" alt=""><div class="row-main">
+        <div class="row-name">${esc(c.name)}</div>
+        <div class="row-sub">${esc(c.color || '')} · RAM ${c.ram ?? '?'}</div></div>`;
+      li.addEventListener('click', () => {
+        if (cpChosen.length >= 3 || cpChosen.some(x => x.name === c.name)) return; // 3 max, unique names
+        cpChosen.push(c); cpRenderChosen();
+      });
+      out.appendChild(li);
+    });
+  }
+  async function cpCreateDeck() {
+    if (cpChosen.length !== 3) return;
+    const errEl = $('newDeckError'); errEl.textContent = '';
+    const { data, error } = await window.sb.from('decks').insert({
+      user_id: user.id, game: 'cyberpunk',
+      leader_card_code: cpChosen[0].card_code, name: 'Cyberpunk Deck',
+    }).select('id').single();
+    if (error) { errEl.textContent = error.message; return; }
+    for (const l of cpChosen) {
+      const { error: e2 } = await window.sb.from('deck_legends').insert({ deck_id: data.id, card_code: l.card_code });
+      if (e2) { errEl.textContent = e2.message; break; }
+    }
+    closeNewDeck();
+    openDeck(data.id, true);
+  }
+
+  function cpInit() {
+    $('ndGame').addEventListener('click', () => {
+      const g = pillValue('ndGame') || 'optcg';
+      $('ndOptcgCreate').style.display = g === 'optcg' ? '' : 'none';
+      $('ndCyberpunkCreate').style.display = g === 'cyberpunk' ? '' : 'none';
+      if (g === 'cyberpunk') { cpResetCreate(); setTimeout(() => $('legendSearch').focus(), 0); }
+    });
+    $('legendSearch').addEventListener('input', debounce(cpSearchLegends, 250));
+    $('ndCreateCp').addEventListener('click', cpCreateDeck);
+    $('cpBack').addEventListener('click', () => showList());
+    $('cpDeckName').addEventListener('change', cpRename);
+    $('cpEyeBtn').addEventListener('click', cpEye);
+    $('cpDeleteBtn').addEventListener('click', cpDelete);
+    $('cpAddBtn').addEventListener('click', () => cpBrowserOpen('card'));
+    $('cpAddLegendBtn').addEventListener('click', () => cpBrowserOpen('legend'));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cpBrowserClose(); });
+  }
+
+  // TCG registry: One Piece is the built-in default (no entry). Register each
+  // other game's module here — the shared shell dispatches by deck.game.
+  const DECK_MODULES = { cyberpunk: { open: cpOpen } };
 
   init();
 })();
