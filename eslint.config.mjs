@@ -45,7 +45,7 @@ export default [
       // keep visibility without failing the build.
       'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
       // Flags a couple of build-up-then-reassign spots in existing app code
-      // (js/main.js, js/binder-view.js); not worth rewriting live code for.
+      // (js/main.js, js/binder/index.js); not worth rewriting live code for.
       'no-useless-assignment': 'off',
     },
   },
