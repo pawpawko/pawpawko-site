@@ -1,0 +1,21 @@
+# Existing app code is not Prettier-formatted yet — check only what we add.
+# (Remove entries as files get formatted.)
+package-lock.json
+playwright-report/
+test-results/
+supabase-schema.sql
+scripts/
+*.html
+*.md
+.github/
+css/
+js/account.js
+js/binder-view.js
+js/config.js
+js/decks.js
+js/demos.js
+js/game-carousel.js
+js/main.js
+js/my-binders.js
+js/supabase-client.js
+js/trades.js

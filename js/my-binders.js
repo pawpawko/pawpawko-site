@@ -179,12 +179,8 @@
     return section;
   }
 
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-  function escapeAttr(s) {
-    return String(s ?? '').replace(/["<>]/g, c => ({'"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
-  }
+  const escapeHtml = window.PK.escapeHtml;
+  const escapeAttr = window.PK.escapeAttr;
 
   init();
 })();

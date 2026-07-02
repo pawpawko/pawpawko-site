@@ -2,16 +2,19 @@
 # Applied to every response. This is the site's second line of defense
 # (RLS on Supabase remains the primary authorization boundary).
 #
-# NOTE: delivered as HTTP headers (not a <meta> CSP tag) on purpose, so the
-# Capacitor/Android build (which bundles the same HTML locally) is unaffected.
+# NOTE: delivered as HTTP headers (not a <meta> CSP tag) on purpose: headers
+# apply before any markup is parsed, cover every page from one place, and
+# support directives a <meta> tag can't carry (frame-ancestors).
 #
 # The CSP script-src hashes below cover the 3 inline <head>/<body> scripts:
 #   sha256-eLh+…  -> the dark-mode theme pre-paint check (all pages)
 #   sha256-F+sz…  -> the "is-signed-in" localStorage check (all pages)
 #   sha256-wz+Y…  -> trades.html last-game tab restore
-# If any of those inline scripts is edited, regenerate its hash
-# (sha256 of the exact bytes between <script> and </script>, base64) or the
-# script will be blocked. See scripts/build-web.mjs notes.
+# If any of those inline scripts is edited, regenerate its hash or the script
+# will be blocked in prod. The hash is the base64 sha256 of the EXACT bytes
+# between <script> and </script> (whitespace/newlines included). Example:
+#   node -e "const s=require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]; console.log('sha256-'+require('crypto').createHash('sha256').update(s).digest('base64'))"
+# Then replace the matching 'sha256-…' token in the script-src list below.
 #
 # Framing is SAMEORIGIN / frame-ancestors 'self' (not DENY/'none') because the
 # signed-out my-binders.html demo carousel embeds our own binder.html in an

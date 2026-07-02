@@ -74,7 +74,7 @@ const observer = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.1 });
 
-document.querySelectorAll('.feature-card, .gallery-item, .chapter-item, .shop-category').forEach(el => {
+document.querySelectorAll('.feature-card').forEach(el => {
   el.style.opacity = '0';
   el.style.transform = 'translateY(20px)';
   el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
@@ -238,7 +238,7 @@ applyTheme(currentTheme());
   if (!navAuth || !profileWrap) return;
 
   let badge, dd, list, notifs = [];
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = window.PK.escapeHtml;
 
   function buildUI() {
     const wrap = document.createElement('div');
