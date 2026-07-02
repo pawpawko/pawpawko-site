@@ -8,7 +8,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "e2e": "playwright test",
-    "rls-probe": "node scripts/rls-probe.mjs"
+    "rls-probe": "node scripts/rls-probe.mjs",
+    "drift-check": "node tools/check-constant-drift.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

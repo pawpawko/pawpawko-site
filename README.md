@@ -29,6 +29,16 @@ python -m http.server 8000
 
 Open <http://localhost:8000>. Note: Netlify Forms and `_redirects` are not emulated by this server; use `netlify dev` if you need those.
 
+## Constant drift check
+
+The mobile app hand-mirrors a few of this repo's constants (listing types, binder categories, flair keys). Verify the mirror with:
+
+```sh
+npm run drift-check
+```
+
+Requires [pawpawko-mobile](https://github.com/pawpawko/pawpawko-mobile) checked out as a sibling directory (`../pawpawko-mobile`). Run it before any release that touches shared constants. Local / pre-push only — cross-repo CI would need a PAT for the mobile repo, so CI does not run it. Exit codes: `0` in sync, `1` drift, `2` could not run (missing sibling repo or parse failure — never treat as a pass).
+
 ## Repository layout
 
 ```

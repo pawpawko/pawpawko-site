@@ -125,8 +125,10 @@ function cpRender() {
 
 async function cpRefreshValidity() {
   if (!cpDeck) return;
+  const deck = cpDeck;
   const localTotal = cpCards.reduce((s, r) => s + r.quantity, 0);
-  const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: cpDeck.id });
+  const { data: v } = await window.sb.rpc('deck_validity', { p_deck_id: deck.id });
+  if (cpDeck !== deck) return;   // deck deleted/switched while the RPC was in flight (cf. openSeq in index.js)
   // eye reflects publish state (open eye = public, slashed = hidden)
   const on = $('cpEyeBtn').querySelector('.eye-on'), off = $('cpEyeBtn').querySelector('.eye-off');
   if (on && off) { on.style.display = cpDeck.is_public ? '' : 'none'; off.style.display = cpDeck.is_public ? 'none' : ''; }
