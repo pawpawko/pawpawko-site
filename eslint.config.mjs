@@ -8,7 +8,7 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/'],
+    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/', 'js/vendor/'],
   },
   js.configs.recommended,
   {
