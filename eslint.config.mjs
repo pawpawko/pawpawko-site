@@ -48,6 +48,14 @@ export default [
     },
   },
   {
+    // js/decks/ is native ES modules (decks.html loads js/decks/index.js via
+    // <script type="module">); everything else under js/ stays classic scripts.
+    files: ['js/decks/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
+    },
+  },
+  {
     // js/escape.js is dual-environment: browser script + CJS export for Vitest.
     files: ['js/escape.js'],
     languageOptions: {
