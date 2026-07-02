@@ -25,7 +25,7 @@ export default [
         SB_READY: 'readonly',
         PK: 'readonly', // auth + escape helpers namespace
         PKDemo: 'readonly', // js/demos.js
-        PKDemoExport: 'readonly', // js/decks.js demo hook
+        PKDemoExport: 'readonly', // js/decks/index.js demo hook
         escapeHtml: 'readonly', // js/escape.js
         PAWPAWKO_CONFIG: 'readonly',
         CITIES: 'readonly',
@@ -47,6 +47,14 @@ export default [
       // Flags a couple of build-up-then-reassign spots in existing app code
       // (js/main.js, js/binder-view.js); not worth rewriting live code for.
       'no-useless-assignment': 'off',
+    },
+  },
+  {
+    // js/decks/ is native ES modules (decks.html loads js/decks/index.js via
+    // <script type="module">); everything else under js/ stays classic scripts.
+    files: ['js/decks/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
     },
   },
   {

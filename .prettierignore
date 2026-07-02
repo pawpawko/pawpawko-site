@@ -12,7 +12,7 @@ css/
 js/account.js
 js/binder-view.js
 js/config.js
-js/decks.js
+js/decks/
 js/demos.js
 js/game-carousel.js
 js/main.js
