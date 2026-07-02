@@ -12,9 +12,13 @@ npx supabase db push                # applies pending migrations to prod
 ```
 
 The CLI is linked to project `cligjmfhxvazjarbvexp` (auth token stored per-user;
-`npx supabase login` if it expires). A `db pull` baseline of the live schema is
-still pending — it requires Docker Desktop. Until it exists, `supabase-schema.sql`
-in the repo root remains the reference copy of the full schema.
+`npx supabase login` if it expires; the link itself lives in gitignored
+`supabase/.temp/` — rerun `npx supabase link --project-ref cligjmfhxvazjarbvexp`
+after a fresh clone/worktree). **The live-schema baseline is
+`supabase/migrations/20260702114456_baseline_prod_schema.sql`** (pg_dump via
+`supabase db dump`, marked applied with `migration repair`). The old hand-kept
+`supabase-schema.sql` is retired here as
+`supabase-schema-reference-2026-07-02.sql` — history only.
 
 ## After any schema change
 
