@@ -51,7 +51,7 @@ test('decks.html shows the signed-out demo deck', async ({ page }) => {
 
   await expect(page.locator('#signedOutPreview')).toBeVisible();
   await expect(page.locator('#signedOutPreview .demo-header')).toContainText('demo test deck');
-  // js/decks.js swaps the [data-pk-demo="deck"] stub for the real editor.
+  // js/decks/index.js swaps the [data-pk-demo="deck"] stub for the real editor.
   await expect(page.locator('#signedOutPreview #editorWrap')).toBeVisible();
 
   expect(errors).toEqual([]);

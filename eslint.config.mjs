@@ -23,7 +23,7 @@ export default [
         SB_READY: 'readonly',
         PK: 'readonly', // auth + escape helpers namespace
         PKDemo: 'readonly', // js/demos.js
-        PKDemoExport: 'readonly', // js/decks.js demo hook
+        PKDemoExport: 'readonly', // js/decks/index.js demo hook
         escapeHtml: 'readonly', // js/escape.js
         PAWPAWKO_CONFIG: 'readonly',
         CITIES: 'readonly',
