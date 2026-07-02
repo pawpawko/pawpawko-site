@@ -28,7 +28,6 @@ export async function loadBench() {
   }
   renderBench();
 }
-function benchCount() { return state.bench.reduce((s, b) => s + b.qty, 0); }
 function updateBenchBtn() {
   const btn = $('edBenchBtn');
   if (!btn) return;
