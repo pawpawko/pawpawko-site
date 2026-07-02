@@ -4,6 +4,8 @@
 // Falls back to ?user=<userId> for backwards compat.
 // ============================================
 
+import { state } from './state.js';
+
 const setupNotice = document.getElementById('setupNotice');
 setupNotice.innerHTML = window.PK.notReadyMessage();
 
@@ -16,13 +18,11 @@ const autoAesthetics = params.get('aesthetics') === '1';
 // Signed-out interactive demo (embedded in a carousel on my-binders.html):
 // ?demo=optcg|pokemon runs the REAL binder view on an in-memory binder — no
 // saves (every DB write is DEMO-gated).
-const demoCat = (params.get('demo') || '').toLowerCase();
-const DEMO = ['optcg', 'pokemon', 'cyberpunk'].includes(demoCat);
-if (DEMO) document.body.classList.add('binder-demo');
+if (state.DEMO) document.body.classList.add('binder-demo');
 
 // Modules can't top-level return: the old '!SB_READY' and 'no binder'
 // early returns became the pair of guards on the init() call at the bottom.
-const NO_BINDER = !binderId && !slug && !userId && !DEMO;
+const NO_BINDER = !binderId && !slug && !userId && !state.DEMO;
 if (window.SB_READY && NO_BINDER) {
   document.getElementById('binderStatus').textContent = 'No binder specified.';
 }
@@ -32,14 +32,6 @@ const editBtn       = document.getElementById('editBtn');
 const doneBtn       = document.getElementById('doneBtn');
 const actionsBar    = document.getElementById('binderActions');
 
-let ownerUserId = null;
-let viewerUserId = null;
-let isOwner = false;
-let isCollab = false;           // viewer is a shared-binder collaborator (co-editor)
-let canEdit = false;            // isOwner || isCollab — may edit the binder + its cards
-let currentBinderId = null;     // the binder we're viewing
-let binderCategory = 'optcg';   // 'optcg' | 'pokemon' — drives filter UI + card-browser query
-let binderFlair = null;         // binder flair ('wishlist' enables deck-origin surfacing)
 
 // Game-specific option lists for the card-browser filters.
 const OPTCG_COLORS     = ['Red', 'Blue', 'Green', 'Purple', 'Black', 'Yellow'];
@@ -87,9 +79,9 @@ const CYBERPUNK_TAGS = [
 ];
 
 async function init() {
-  if (DEMO) { await startBinderDemo(); return; }
+  if (state.DEMO) { await startBinderDemo(); return; }
   const me = await window.PK.currentUser();
-  viewerUserId = me?.id || null;
+  state.viewerUserId = me?.id || null;
   const isLoggedIn = !!me;
 
   // Resolve slug → binderId via RPC before the main load path. Slug format is
@@ -138,29 +130,29 @@ async function init() {
     return;
   }
 
-  currentBinderId = binder.id;
-  ownerUserId = binder.user_id;
-  isOwner = isLoggedIn && viewerUserId === ownerUserId;
+  state.currentBinderId = binder.id;
+  state.ownerUserId = binder.user_id;
+  state.isOwner = isLoggedIn && state.viewerUserId === state.ownerUserId;
   // Shared binders: a collaborator (e.g. a partner) co-edits the same binder.
-  isCollab = false;
-  if (isLoggedIn && !isOwner) {
+  state.isCollab = false;
+  if (isLoggedIn && !state.isOwner) {
     const { data: cr } = await window.sb
       .from('binder_collaborators').select('user_id')
-      .eq('binder_id', currentBinderId).eq('user_id', viewerUserId).maybeSingle();
-    isCollab = !!cr;
+      .eq('binder_id', state.currentBinderId).eq('user_id', state.viewerUserId).maybeSingle();
+    state.isCollab = !!cr;
   }
-  canEdit = isOwner || isCollab;
-  sleeveImageUrl = binder.sleeve_image_url || null;
-  binderCategory = ['pokemon', 'cyberpunk'].includes(binder.category) ? binder.category : 'optcg';
-  binderFlair = binder.flair || null;
-  applyGameUI(binderCategory);
+  state.canEdit = state.isOwner || state.isCollab;
+  state.sleeveImageUrl = binder.sleeve_image_url || null;
+  state.binderCategory = ['pokemon', 'cyberpunk'].includes(binder.category) ? binder.category : 'optcg';
+  state.binderFlair = binder.flair || null;
+  applyGameUI(state.binderCategory);
   const profile = binder;  // alias for the rest of the function
 
   // 2. Render header
   const displayName = profile.display_name || 'someone';
   const binderName  = profile.binder_name || 'binder';
   const titleText = `${displayName}'s ${binderName}`;
-  const editIcon = isOwner
+  const editIcon = state.isOwner
     ? `<button type="button" id="binderNameEditBtn" class="binder-name-edit-btn" aria-label="Edit binder name" title="Edit name">
          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.04a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 2-1.66Z"/>
@@ -175,7 +167,7 @@ async function init() {
   renderCategory(profile.category || 'optcg');
   renderFlair(profile.flair || 'trade');
   applyLayout(profile.layout || '4x3');
-  if (isOwner) { wireFlairSelect(); wireBinderNameEdit(); }   // binder-row metadata is owner-only (RLS enforces it too); collaborators co-edit cards only
+  if (state.isOwner) { wireFlairSelect(); wireBinderNameEdit(); }   // binder-row metadata is owner-only (RLS enforces it too); collaborators co-edit cards only
 
   if (isLoggedIn) {
     const rows = [];
@@ -188,7 +180,7 @@ async function init() {
     document.getElementById('binderMeta').innerHTML = rows.join('');
 
     // Show Discord contact only when viewer can't edit (co-editors don't need it)
-    if (!canEdit && profile.discord_handle) {
+    if (!state.canEdit && profile.discord_handle) {
       document.getElementById('binderContact').innerHTML =
         `Contact on Discord: <strong>${escapeHtml(profile.discord_handle)}</strong>`;
     }
@@ -198,7 +190,7 @@ async function init() {
   }
 
   // 3. Show edit button (owner or collaborator) or search toggle (viewers)
-  if (canEdit) {
+  if (state.canEdit) {
     actionsBar.style.display = '';
     editBtn.addEventListener('click', enterEdit);
     doneBtn.addEventListener('click', exitEdit);
@@ -212,16 +204,15 @@ async function init() {
   }
 
   // Live-sync edits between co-owners viewing the same binder at once.
-  if (canEdit) subscribeBinderRealtime();
+  if (state.canEdit) subscribeBinderRealtime();
 
   // Restore the page the user was last on for this binder (survives refresh).
-  const savedPage = parseInt(sessionStorage.getItem('pawpaw:binderPage:' + currentBinderId), 10);
-  if (savedPage > 1) pendingKeepPage = savedPage;
-  loadListings(canEdit, isLoggedIn);
+  const savedPage = parseInt(sessionStorage.getItem('pawpaw:binderPage:' + state.currentBinderId), 10);
+  if (savedPage > 1) state.pendingKeepPage = savedPage;
+  loadListings(state.canEdit, isLoggedIn);
 }
 
 // ---------- Signed-out demo: the REAL binder view on an in-memory binder ----------
-let demoSeq = 0;
 const DEMO_CARDS = {
   optcg: ['OP16-052','OP16-054','OP16-055','ST30-014','OP11-061','OP16-026','OP16-045','OP16-048','OP16-032','OP16-042','OP15-032','OP16-056'],
   // Pokémon = a "chase" binder of Greninja grails.
@@ -230,32 +221,32 @@ const DEMO_CARDS = {
 const DEMO_TYPES = ['trade','sell','combo','trade','trade','sell','trade','combo','trade','sell','trade','trade'];
 
 async function startBinderDemo() {
-  currentBinderId = '__demo__';
-  ownerUserId = viewerUserId = '__demo__';
-  isOwner = true; isCollab = false; canEdit = true;
-  binderCategory = (demoCat === 'pokemon' || demoCat === 'cyberpunk') ? demoCat : 'optcg';
-  const isChase = binderCategory === 'pokemon';   // the Pokémon binder is a "chase" (wishlist) binder
-  binderFlair = isChase ? 'wishlist' : 'trade';
-  applyGameUI(binderCategory);
+  state.currentBinderId = '__demo__';
+  state.ownerUserId = state.viewerUserId = '__demo__';
+  state.isOwner = true; state.isCollab = false; state.canEdit = true;
+  state.binderCategory = (state.demoCat === 'pokemon' || state.demoCat === 'cyberpunk') ? state.demoCat : 'optcg';
+  const isChase = state.binderCategory === 'pokemon';   // the Pokémon binder is a "chase" (wishlist) binder
+  state.binderFlair = isChase ? 'wishlist' : 'trade';
+  applyGameUI(state.binderCategory);
 
   const name = isChase ? 'Chase Binder'
-             : binderCategory === 'cyberpunk' ? 'Cyberpunk Binder' : 'One Piece Binder';
+             : state.binderCategory === 'cyberpunk' ? 'Cyberpunk Binder' : 'One Piece Binder';
   document.getElementById('binderTitle').innerHTML =
     `<span class="binder-name-group"><em id="binderNameView">${escapeHtml(name)}</em></span>`;
   document.title = name + ' | Pawpaw Ko';
-  renderCategory(binderCategory);
-  renderFlair(binderFlair);
+  renderCategory(state.binderCategory);
+  renderFlair(state.binderFlair);
   if (isChase) { const fp = document.getElementById('binderFlair'); if (fp) fp.textContent = 'Chase'; }
   applyLayout('4x3');
   document.getElementById('binderMeta').innerHTML = '';
 
-  const codes = DEMO_CARDS[binderCategory] || DEMO_CARDS.optcg;
+  const codes = DEMO_CARDS[state.binderCategory] || DEMO_CARDS.optcg;
   const { data: cards } = await window.sb.from('cards')
     .select('card_code, name, image_url, image_url_lg, color, type, cost, attribute, rarity, series, release_order, supertype, subtypes, types, hp, ram')
-    .eq('game', binderCategory).in('card_code', codes);
+    .eq('game', state.binderCategory).in('card_code', codes);
   const byCode = {}; (cards || []).forEach(c => { byCode[c.card_code] = c; });
-  allListings = codes.filter(c => byCode[c]).map((code, i) => ({
-    id: 'demo-' + (++demoSeq), card_code: code, quantity: (i % 3) + 1,
+  state.allListings = codes.filter(c => byCode[c]).map((code, i) => ({
+    id: 'demo-' + (++state.demoSeq), card_code: code, quantity: (i % 3) + 1,
     listing_type: DEMO_TYPES[i % DEMO_TYPES.length], notes: null,
     sort_order: i, created_at: new Date().toISOString(), cards: byCode[code],
   }));
@@ -299,7 +290,7 @@ async function startBinderDemo() {
       // stable; small deltas are just the iframe autosize feedback loop.
       if (Math.abs(h - lastH) < 8) return;
       lastH = h;
-      try { parent.postMessage({ type: 'pk-binder-demo-height', cat: binderCategory, height: h }, '*'); } catch (e) {}
+      try { parent.postMessage({ type: 'pk-binder-demo-height', cat: state.binderCategory, height: h }, '*'); } catch (e) {}
     };
     const schedule = () => { clearTimeout(timer); timer = setTimeout(post, 80); };
     new ResizeObserver(schedule).observe(document.body);
@@ -345,7 +336,7 @@ function wireBinderNameEdit() {
     const next = view.textContent.trim();
     if (!commit || !next || next === original) { view.textContent = original; return; }
     const { error } = await window.sb.from('binders')
-      .update({ name: next }).eq('id', currentBinderId);
+      .update({ name: next }).eq('id', state.currentBinderId);
     if (error) { alert('Could not rename binder: ' + error.message); view.textContent = original; return; }
     original = next;
     document.title = `${document.getElementById('binderTitle').textContent.split("'s")[0]}'s ${next} | Pawpaw Ko`;
@@ -372,7 +363,7 @@ function wireFlairSelect() {
       if (btn.disabled) return;
       const newFlair = btn.dataset.flair;
       const { error } = await window.sb.from('binders')
-        .update({ flair: newFlair }).eq('id', currentBinderId);
+        .update({ flair: newFlair }).eq('id', state.currentBinderId);
       if (error) { alert('Could not update flair: ' + error.message); return; }
       renderFlair(newFlair);
     });
@@ -384,7 +375,7 @@ function enterEdit() {
   document.body.classList.add('binder-editing');
   actionsBar.style.display = 'none';   // hides Edit Binder button row
   doneBtn.style.display = '';          // Done lives in the title row
-  if (!cardBrowserInited) initCardBrowser();
+  if (!state.cardBrowserInited) initCardBrowser();
   wireAestheticsToggle();
   setUrlParam('edit', '1');
 }
@@ -393,13 +384,12 @@ function exitEdit() {
   document.body.classList.remove('binder-editing');
   actionsBar.style.display = '';       // show Edit Binder again
   doneBtn.style.display = 'none';
-  if (aestheticsMode) exitAesthetics();
+  if (state.aestheticsMode) exitAesthetics();
   setUrlParam('edit', null);
   setUrlParam('aesthetics', null);
 }
 
 // ---------- Aesthetics mode (rearrange cards) ----------
-let aestheticsMode = false;
 let aestheticsWired = false;
 
 function wireAestheticsToggle() {
@@ -408,25 +398,25 @@ function wireAestheticsToggle() {
   if (!btn) return;
   aestheticsWired = true;
   btn.addEventListener('click', () => {
-    aestheticsMode ? exitAesthetics() : enterAesthetics();
+    state.aestheticsMode ? exitAesthetics() : enterAesthetics();
   });
 }
 const COLOR_ORDER = ['Red', 'Blue', 'Green', 'Purple', 'Black', 'Yellow'];
 let aestheticsSortMode = 'custom-4x3';
 
 function applyLayout(layout) {
-  binderLayout = (layout === '3x3') ? '3x3' : '4x3';
-  binderContent.classList.toggle('layout-3x3', binderLayout === '3x3');
-  binderContent.classList.toggle('layout-4x3', binderLayout === '4x3');
-  currentPage = 1;
+  state.binderLayout = (layout === '3x3') ? '3x3' : '4x3';
+  binderContent.classList.toggle('layout-3x3', state.binderLayout === '3x3');
+  binderContent.classList.toggle('layout-4x3', state.binderLayout === '4x3');
+  state.currentPage = 1;
 }
 
 async function saveLayout(layout) {
   applyLayout(layout);
-  if (DEMO) return;
-  if (!isOwner) return;   // layout is an owner-only binder-row setting (RLS enforces it); apply locally for collaborators but don't fire a rejected UPDATE
+  if (state.DEMO) return;
+  if (!state.isOwner) return;   // layout is an owner-only binder-row setting (RLS enforces it); apply locally for collaborators but don't fire a rejected UPDATE
   const { error } = await window.sb.from('binders')
-    .update({ layout }).eq('id', currentBinderId);
+    .update({ layout }).eq('id', state.currentBinderId);
   if (error) console.warn('layout save failed:', error.message);
 }
 
@@ -434,31 +424,31 @@ function applySortMode(mode) {
   aestheticsSortMode = mode;
   if (mode === 'custom-4x3' || mode === 'custom-3x3') {
     const targetLayout = (mode === 'custom-3x3') ? '3x3' : '4x3';
-    if (targetLayout !== binderLayout) saveLayout(targetLayout);
+    if (targetLayout !== state.binderLayout) saveLayout(targetLayout);
     // Custom sort = use saved sort_order (natural order of allListings).
-    currentListings = allListings.slice();
+    state.currentListings = state.allListings.slice();
   } else if (mode === 'release') {
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       (b.cards?.release_order || 0) - (a.cards?.release_order || 0) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'color') {
     const rank = c => { const i = COLOR_ORDER.indexOf(c?.cards?.color); return i < 0 ? 99 : i; };
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       rank(a) - rank(b) ||
       (a.cards?.cost || 0) - (b.cards?.cost || 0) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'cost') {
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       (a.cards?.cost ?? 99) - (b.cards?.cost ?? 99) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'ram') {
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       (a.cards?.ram ?? 99) - (b.cards?.ram ?? 99) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'rarity') {
     // Group by rarity (rarest first); within each rarity, newest release first.
     const rank = c => { const i = RARITY_ORDER.indexOf(c?.cards?.rarity); return i < 0 ? 99 : i; };
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       rank(a) - rank(b) ||
       (b.cards?.release_order || 0) - (a.cards?.release_order || 0) ||
       String(a.card_code).localeCompare(b.card_code));
@@ -470,12 +460,12 @@ function applySortMode(mode) {
       const i = POKEMON_TYPES.indexOf(t);
       return i < 0 ? 99 : i;
     };
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       rank(a) - rank(b) ||
       (b.cards?.hp || 0) - (a.cards?.hp || 0) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'hp') {
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       (b.cards?.hp ?? -1) - (a.cards?.hp ?? -1) ||
       String(a.card_code).localeCompare(b.card_code));
   } else if (mode === 'supertype') {
@@ -483,11 +473,11 @@ function applySortMode(mode) {
       const i = POKEMON_SUPERTYPES.indexOf(c?.cards?.supertype);
       return i < 0 ? 99 : i;
     };
-    currentListings = allListings.slice().sort((a, b) =>
+    state.currentListings = state.allListings.slice().sort((a, b) =>
       rank(a) - rank(b) ||
       String(a.card_code).localeCompare(b.card_code));
   }
-  currentPage = 1;
+  state.currentPage = 1;
   renderCurrentPage();
 }
 
@@ -506,7 +496,7 @@ function setUrlParam(key, value) {
 }
 
 function enterAesthetics() {
-  aestheticsMode = true;
+  state.aestheticsMode = true;
   binderContent.classList.add('aesthetics');
   document.getElementById('aestheticsToggle').setAttribute('aria-pressed', 'true');
   const sel = document.getElementById('aestheticsSort');
@@ -515,7 +505,7 @@ function enterAesthetics() {
     // Default the dropdown to whichever custom layout the binder currently uses.
     const NON_CUSTOM_SORTS = ['release','rarity','color','cost','ram','ptype','hp','supertype'];
     if (!NON_CUSTOM_SORTS.includes(aestheticsSortMode)) {
-      aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
+      aestheticsSortMode = (state.binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
     }
     sel.value = aestheticsSortMode;
   }
@@ -526,7 +516,7 @@ function enterAesthetics() {
   renderCurrentPage();
 }
 async function exitAesthetics() {
-  aestheticsMode = false;
+  state.aestheticsMode = false;
   binderContent.classList.remove('aesthetics');
   const btn = document.getElementById('aestheticsToggle');
   if (btn) btn.setAttribute('aria-pressed', 'false');
@@ -540,13 +530,13 @@ async function exitAesthetics() {
   // (Manual custom layouts are already saved on drag.) Guard on equal length
   // so a stray filtered view can never drop cards.
   const isAuto = aestheticsSortMode !== 'custom-4x3' && aestheticsSortMode !== 'custom-3x3';
-  if (isAuto && currentListings.length === allListings.length) {
-    allListings = currentListings.slice();
+  if (isAuto && state.currentListings.length === state.allListings.length) {
+    state.allListings = state.currentListings.slice();
     await persistPositions();
-    aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
+    aestheticsSortMode = (state.binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
     if (sel) sel.value = aestheticsSortMode;
   }
-  currentListings = allListings.slice();
+  state.currentListings = state.allListings.slice();
   renderCurrentPage();
 }
 
@@ -620,50 +610,50 @@ function attachDragHandlers(tile, listing) {
 async function moveListing(srcId, dstId) {
   // If user reorders while in an auto-sort, that becomes the new custom.
   if (aestheticsSortMode !== 'custom-4x3' && aestheticsSortMode !== 'custom-3x3') {
-    allListings = currentListings.slice();
-    aestheticsSortMode = (binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
+    state.allListings = state.currentListings.slice();
+    aestheticsSortMode = (state.binderLayout === '3x3') ? 'custom-3x3' : 'custom-4x3';
     const sel = document.getElementById('aestheticsSort');
     if (sel) sel.value = aestheticsSortMode;
   }
-  const srcIdx = allListings.findIndex(l => l.id === srcId);
-  const dstIdx = allListings.findIndex(l => l.id === dstId);
+  const srcIdx = state.allListings.findIndex(l => l.id === srcId);
+  const dstIdx = state.allListings.findIndex(l => l.id === dstId);
   if (srcIdx < 0 || dstIdx < 0) return;
-  const [moved] = allListings.splice(srcIdx, 1);
-  allListings.splice(dstIdx, 0, moved);
+  const [moved] = state.allListings.splice(srcIdx, 1);
+  state.allListings.splice(dstIdx, 0, moved);
   await persistPositions();
-  currentListings = allListings.slice();
+  state.currentListings = state.allListings.slice();
   renderCurrentPage();
 }
 
 async function persistPositions() {
-  if (DEMO) { allListings.forEach((l, i) => { l.sort_order = i; }); return; }
+  if (state.DEMO) { state.allListings.forEach((l, i) => { l.sort_order = i; }); return; }
   // Write sort_order = index for every listing. Could be optimized to only the affected range.
-  const updates = allListings.map((l, i) => ({ id: l.id, sort_order: i, binder_id: currentBinderId, card_code: l.card_code, quantity: l.quantity, listing_type: l.listing_type }));
+  const updates = state.allListings.map((l, i) => ({ id: l.id, sort_order: i, binder_id: state.currentBinderId, card_code: l.card_code, quantity: l.quantity, listing_type: l.listing_type }));
   // Use single upsert keyed on id.
   const { error } = await window.sb.from('listings').upsert(updates, { onConflict: 'id' });
   if (error) console.warn('reorder save failed:', error.message);
-  allListings.forEach((l, i) => { l.sort_order = i; });
+  state.allListings.forEach((l, i) => { l.sort_order = i; });
 }
 
 // "Move to page N" click handler — replaces openAddListing in aesthetics mode.
 async function openMovePagePicker(listing) {
-  const total = currentListings.length;
+  const total = state.currentListings.length;
   const pageSize = getPageSize();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (totalPages < 2) { alert('Only one page so far.'); return; }
   const input = prompt(`Move "${listing.cards?.name || listing.card_code}" to which page? (1–${totalPages})`);
   const target = parseInt((input || '').trim(), 10);
   if (!target || target < 1 || target > totalPages) return;
-  const srcIdx = allListings.findIndex(l => l.id === listing.id);
+  const srcIdx = state.allListings.findIndex(l => l.id === listing.id);
   if (srcIdx < 0) return;
   // Remove and re-insert at end-of-target-page sort_order.
-  const [moved] = allListings.splice(srcIdx, 1);
+  const [moved] = state.allListings.splice(srcIdx, 1);
   // After removal, target-page end index is min(target*pageSize, len) - 1, then +1 for insertion point.
-  const insertAt = Math.min(target * pageSize, allListings.length);
-  allListings.splice(insertAt, 0, moved);
+  const insertAt = Math.min(target * pageSize, state.allListings.length);
+  state.allListings.splice(insertAt, 0, moved);
   await persistPositions();
-  currentListings = allListings.slice();
-  currentPage = target;
+  state.currentListings = state.allListings.slice();
+  state.currentPage = target;
   renderCurrentPage();
 }
 
@@ -683,7 +673,7 @@ function toggleSearch() {
     filterBinderListings();
   } else {
     binderContent.classList.remove('searching');
-    renderListings(allListings);
+    renderListings(state.allListings);
   }
 }
 
@@ -693,8 +683,8 @@ async function initSearchFilters() {
     document.getElementById(id).addEventListener('change', filterBinderListings);
   });
   document.getElementById('cbName').addEventListener('input', () => {
-    clearTimeout(cbDebounceTimer);
-    cbDebounceTimer = setTimeout(filterBinderListings, 250);
+    clearTimeout(state.cbDebounceTimer);
+    state.cbDebounceTimer = setTimeout(filterBinderListings, 250);
   });
   document.getElementById('cbClear').addEventListener('click', () => {
     ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
@@ -705,11 +695,9 @@ async function initSearchFilters() {
 }
 
 // ------------------- Card browser -------------------
-let cardBrowserInited = false;
-let cbDebounceTimer = null;
 
 async function initCardBrowser() {
-  cardBrowserInited = true;
+  state.cardBrowserInited = true;
   await populateDropdowns();
   wireBrowserFilters();
   loadCards();
@@ -758,7 +746,7 @@ async function populateDropdowns() {
   while (from < 20000) {
     const { data, error } = await window.sb
       .from('cards').select('series')
-      .eq('game', binderCategory)
+      .eq('game', state.binderCategory)
       .range(from, from + page - 1);
     if (error || !data || data.length === 0) break;
     data.forEach(r => r.series && seriesSet.add(r.series));
@@ -781,13 +769,13 @@ async function populateDropdowns() {
     seriesSel.appendChild(o);
   });
 
-  if (binderCategory === 'pokemon') {
+  if (state.binderCategory === 'pokemon') {
     appendOptions(document.getElementById('cbType'),      POKEMON_TYPES);
     appendOptions(document.getElementById('cbSupertype'), POKEMON_SUPERTYPES);
     appendOptions(document.getElementById('cbSubtype'),   POKEMON_SUBTYPES);
     appendOptions(document.getElementById('cbHp'),        POKEMON_HP_BUCKETS);
     appendOptions(document.getElementById('cbRarity'),    POKEMON_RARITIES);
-  } else if (binderCategory === 'cyberpunk') {
+  } else if (state.binderCategory === 'cyberpunk') {
     appendOptions(document.getElementById('cbColor'),  CYBERPUNK_COLORS);
     appendOptions(document.getElementById('cbType'),   CYBERPUNK_TYPES);
     appendOptions(document.getElementById('cbCost'),   Array.from({ length: 9 }, (_, i) => i + 1));
@@ -809,8 +797,8 @@ function wireBrowserFilters() {
     document.getElementById(id).addEventListener('change', onChange);
   });
   document.getElementById('cbName').addEventListener('input', () => {
-    clearTimeout(cbDebounceTimer);
-    cbDebounceTimer = setTimeout(onChange, 250);
+    clearTimeout(state.cbDebounceTimer);
+    state.cbDebounceTimer = setTimeout(onChange, 250);
   });
   document.getElementById('cbClear').addEventListener('click', () => {
     ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
@@ -831,15 +819,15 @@ async function loadCards() {
 
   // Game-aware select list so each game's columns come back for
   // client-side filtering / display.
-  const projection = binderCategory === 'pokemon'
+  const projection = state.binderCategory === 'pokemon'
     ? 'card_code, name, series, type, types, supertype, subtypes, hp, rarity, image_url'
-    : binderCategory === 'cyberpunk'
+    : state.binderCategory === 'cyberpunk'
     ? 'card_code, name, series, color, type, cost, ram, types, rarity, image_url'
     : 'card_code, name, series, color, type, cost, attribute, rarity, image_url';
 
   let q = window.sb.from('cards')
     .select(projection)
-    .eq('game', binderCategory);
+    .eq('game', state.binderCategory);
 
   if (name) {
     const safe = name.replace(/[%,]/g, '');
@@ -848,7 +836,7 @@ async function loadCards() {
   if (series) q = q.eq('series', series);
   if (rarity) q = q.eq('rarity', rarity);
 
-  if (binderCategory === 'pokemon') {
+  if (state.binderCategory === 'pokemon') {
     const supertype = document.getElementById('cbSupertype').value;
     const subtype   = document.getElementById('cbSubtype').value;
     const hpMin     = document.getElementById('cbHp').value;
@@ -859,7 +847,7 @@ async function loadCards() {
     if (supertype) q = q.eq('supertype', supertype);
     if (subtype)   q = q.contains('subtypes', [subtype]);
     if (hpMin)     q = q.gte('hp', parseInt(hpMin, 10));
-  } else if (binderCategory === 'cyberpunk') {
+  } else if (state.binderCategory === 'cyberpunk') {
     const color = document.getElementById('cbColor').value;
     const cost  = document.getElementById('cbCost').value;
     const tag   = document.getElementById('cbTag').value;
@@ -965,14 +953,14 @@ async function openAddListing(card) {
   // A wishlist is a "want" list — trade/sell/free status is meaningless, so
   // hide the listing-type picker (cards still save with an inert default).
   const alTypeRow = document.getElementById('alTypeRow');
-  if (alTypeRow) alTypeRow.style.display = (binderFlair === 'wishlist') ? 'none' : '';
+  if (alTypeRow) alTypeRow.style.display = (state.binderFlair === 'wishlist') ? 'none' : '';
   document.getElementById('alError').textContent = '';
   document.getElementById('addListingModal').style.display = '';
 
   // If this card is already in the binder, surface a Remove option
   let existing;
-  if (DEMO) { existing = allListings.filter(l => l.card_code === card.card_code); }
-  else { const { data } = await window.sb.from('listings').select('id').eq('binder_id', currentBinderId).eq('card_code', card.card_code); existing = data; }
+  if (state.DEMO) { existing = state.allListings.filter(l => l.card_code === card.card_code); }
+  else { const { data } = await window.sb.from('listings').select('id').eq('binder_id', state.currentBinderId).eq('card_code', card.card_code); existing = data; }
   const removeBtn = document.getElementById('alRemove');
   if (existing && existing.length > 0) {
     removeBtn.style.display = '';
@@ -989,9 +977,9 @@ function closeAddListing() {
 async function removeAllListingsForCard() {
   if (!activeCard) return;
   if (!confirm(`Remove all listings for ${activeCard.name || activeCard.card_code}?`)) return;
-  if (DEMO) { allListings = allListings.filter(l => l.card_code !== activeCard.card_code); closeAddListing(); loadListings(true, true); loadCards(); return; }
+  if (state.DEMO) { state.allListings = state.allListings.filter(l => l.card_code !== activeCard.card_code); closeAddListing(); loadListings(true, true); loadCards(); return; }
   const { error } = await window.sb
-    .from('listings').delete().eq('binder_id', currentBinderId).eq('card_code', activeCard.card_code);
+    .from('listings').delete().eq('binder_id', state.currentBinderId).eq('card_code', activeCard.card_code);
   if (error) { document.getElementById('alError').textContent = error.message; return; }
   closeAddListing();
   loadListings(true, true);
@@ -1004,16 +992,16 @@ async function saveListing() {
   const errEl = document.getElementById('alError');
   errEl.textContent = '';
   const qty   = parseInt(document.getElementById('alQty').value, 10);
-  const isWishlist = binderFlair === 'wishlist';
+  const isWishlist = state.binderFlair === 'wishlist';
   // Wishlist cards carry no trade/sell status — store an inert default.
   const ltype = isWishlist ? 'trade' : document.getElementById('alType').value;
   const notes = null;
   if (!qty || qty < 1) { errEl.textContent = 'Quantity must be at least 1'; return; }
 
-  if (DEMO) {
-    allListings.push({ id: 'demo-' + (++demoSeq), card_code: activeCard.card_code, quantity: qty,
-      listing_type: ltype, notes, sort_order: allListings.length, created_at: new Date().toISOString(), cards: activeCard });
-    pendingFocusCode = activeCard.card_code;
+  if (state.DEMO) {
+    state.allListings.push({ id: 'demo-' + (++state.demoSeq), card_code: activeCard.card_code, quantity: qty,
+      listing_type: ltype, notes, sort_order: state.allListings.length, created_at: new Date().toISOString(), cards: activeCard });
+    state.pendingFocusCode = activeCard.card_code;
     closeAddListing();
     loadListings(true, true);
     return;
@@ -1021,7 +1009,7 @@ async function saveListing() {
 
   savingListing = true;
   const { error } = await window.sb.from('listings').insert({
-    binder_id: currentBinderId,
+    binder_id: state.currentBinderId,
     card_code: activeCard.card_code,
     quantity: qty,
     listing_type: ltype,
@@ -1032,28 +1020,18 @@ async function saveListing() {
   if (!isWishlist) localStorage.setItem('pawpaw:lastListingType', ltype);
   // Land on the page where the just-added card sits (new cards append at the
   // end) instead of snapping back to page 1.
-  pendingFocusCode = activeCard.card_code;
+  state.pendingFocusCode = activeCard.card_code;
   closeAddListing();
   loadListings(true, true);   // refresh main grid (still in edit mode)
 }
 
-let allListings = [];        // full binder cache (used for client-side filtering)
-let decksById = {};          // deck_id → {id,name,leader_card_code} for wishlist deck-origin pills
-let currentListings = [];    // currently rendered (full or filtered)
-let currentPage = 1;
-let pendingFocusCode = null; // card_code to scroll the binder to after the next render (e.g. just-added card)
-let pendingKeepPage = null;  // page number to stay on across the next render (e.g. after "Got it")
-let binderLayout = '4x3';  // set from DB on load
-const getPageSize = () => (binderLayout === '3x3' ? 9 : 12);
-let lastShowEditControls = false;
-let lastIsLoggedIn = false;
-let sleeveImageUrl = null;   // owner's custom sleeve background, applied to every tile
+const getPageSize = () => (state.binderLayout === '3x3' ? 9 : 12);
 
 async function loadListings(showEditControls, isLoggedIn) {
-  lastShowEditControls = showEditControls;
-  lastIsLoggedIn = isLoggedIn;
+  state.lastShowEditControls = showEditControls;
+  state.lastIsLoggedIn = isLoggedIn;
   const statusEl = document.getElementById('binderStatus');
-  if (DEMO) { renderDeckFilter(); renderBinderUpdated(allListings); filterBinderListings(); return; }
+  if (state.DEMO) { renderDeckFilter(); renderBinderUpdated(state.allListings); filterBinderListings(); return; }
 
   // Two-query pattern for both paths: fetch listings (or call the
   // public RPC), then look up matching cards by (game, card_code) and
@@ -1067,7 +1045,7 @@ async function loadListings(showEditControls, isLoggedIn) {
     const res = await window.sb
       .from('listings')
       .select('id, quantity, listing_type, notes, card_code, sort_order, created_at, deck_id')
-      .eq('binder_id', currentBinderId)
+      .eq('binder_id', state.currentBinderId)
       .order('sort_order', { ascending: true, nullsFirst: false })
       // Un-placed cards (null sort_order) append at the end: oldest first,
       // newest last. So auto-added rows (e.g. deck wishlist sync) land at
@@ -1076,7 +1054,7 @@ async function loadListings(showEditControls, isLoggedIn) {
     lerr = res.error;
     rawListings = res.data;
   } else {
-    const { data, error } = await window.sb.rpc('get_binder_listings_public', { p_binder_id: currentBinderId });
+    const { data, error } = await window.sb.rpc('get_binder_listings_public', { p_binder_id: state.currentBinderId });
     lerr = error;
     rawListings = data;
   }
@@ -1087,7 +1065,7 @@ async function loadListings(showEditControls, isLoggedIn) {
     if (codes.length) {
       const { data: cards } = await window.sb.from('cards')
         .select('card_code, name, image_url, image_url_lg, color, type, cost, attribute, rarity, series, release_order, supertype, subtypes, types, hp, ram')
-        .eq('game', binderCategory)
+        .eq('game', state.binderCategory)
         .in('card_code', codes);
       (cards || []).forEach(c => { cardsByCode[c.card_code] = c; });
     }
@@ -1104,19 +1082,19 @@ async function loadListings(showEditControls, isLoggedIn) {
   // copies still missing for that deck. Look up the deck names so the tile can
   // attribute the card. Kept owner-only — the public RPC never returns deck_id,
   // so anon viewers of a shared wishlist never see (possibly private) deck names.
-  decksById = {};
-  if (isOwner && binderFlair === 'wishlist') {
+  state.decksById = {};
+  if (state.isOwner && state.binderFlair === 'wishlist') {
     const deckIds = [...new Set((listings || []).map(l => l.deck_id).filter(Boolean))];
     if (deckIds.length) {
       const { data: decks } = await window.sb
         .from('decks').select('id, name, leader_card_code').in('id', deckIds);
-      (decks || []).forEach(d => { decksById[d.id] = d; });
+      (decks || []).forEach(d => { state.decksById[d.id] = d; });
     }
   }
 
-  allListings = listings || [];
+  state.allListings = listings || [];
   renderDeckFilter();
-  renderBinderUpdated(allListings);
+  renderBinderUpdated(state.allListings);
   // Render through the filter path so an active filter (e.g. while adding
   // cards with "Show all" un-toggled) persists across reloads instead of
   // snapping back to the full binder. With "Show all" checked or no filters
@@ -1154,24 +1132,24 @@ function renderBinderUpdated(listings) {
 let lastPageSize = getPageSize();
 window.addEventListener('resize', () => {
   const ps = getPageSize();
-  if (ps !== lastPageSize) { lastPageSize = ps; currentPage = 1; renderCurrentPage(); }
+  if (ps !== lastPageSize) { lastPageSize = ps; state.currentPage = 1; renderCurrentPage(); }
 });
 
 function renderListings(listings) {
-  currentListings = listings || [];
-  if (pendingKeepPage != null) {
+  state.currentListings = listings || [];
+  if (state.pendingKeepPage != null) {
     // Stay on the page the user was on (e.g. after "Got it"); renderCurrentPage
     // clamps to the new total if a card dropped off.
-    currentPage = pendingKeepPage;
-    pendingKeepPage = null;
+    state.currentPage = state.pendingKeepPage;
+    state.pendingKeepPage = null;
   } else {
     // Default to page 1, unless a card was flagged to focus (e.g. just added) —
     // then jump to the page that card lands on.
-    currentPage = 1;
-    if (pendingFocusCode) {
-      const idx = currentListings.findIndex(l => l.card_code === pendingFocusCode);
-      if (idx >= 0) currentPage = Math.floor(idx / getPageSize()) + 1;
-      pendingFocusCode = null;
+    state.currentPage = 1;
+    if (state.pendingFocusCode) {
+      const idx = state.currentListings.findIndex(l => l.card_code === state.pendingFocusCode);
+      if (idx >= 0) state.currentPage = Math.floor(idx / getPageSize()) + 1;
+      state.pendingFocusCode = null;
     }
   }
   renderCurrentPage();
@@ -1186,23 +1164,23 @@ function renderCurrentPage() {
   pagEl.innerHTML = '';
   if (pagTopEl) pagTopEl.innerHTML = '';
 
-  const total      = currentListings.length;
+  const total      = state.currentListings.length;
   const totalPages = Math.max(1, Math.ceil(total / getPageSize()));
-  if (currentPage > totalPages) currentPage = totalPages;
+  if (state.currentPage > totalPages) state.currentPage = totalPages;
   // Remember the current page so a browser refresh lands here again.
-  try { sessionStorage.setItem('pawpaw:binderPage:' + currentBinderId, currentPage); } catch (e) {}
-  const start = (currentPage - 1) * getPageSize();
-  const pageItems = currentListings.slice(start, start + getPageSize());
+  try { sessionStorage.setItem('pawpaw:binderPage:' + state.currentBinderId, state.currentPage); } catch (e) {}
+  const start = (state.currentPage - 1) * getPageSize();
+  const pageItems = state.currentListings.slice(start, start + getPageSize());
 
   // Status
-  const filteredSuffix = (total !== allListings.length) ? ` of ${allListings.length}` : '';
+  const filteredSuffix = (total !== state.allListings.length) ? ` of ${state.allListings.length}` : '';
   if (total === 0) {
-    statusEl.textContent = lastShowEditControls
+    statusEl.textContent = state.lastShowEditControls
       ? 'No cards yet. Click Edit Binder, then add some.'
       : 'No cards in this binder yet.';
   } else {
     statusEl.textContent = `${total}${filteredSuffix} listing${total === 1 ? '' : 's'}` +
-      (totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : '');
+      (totalPages > 1 ? ` · Page ${state.currentPage} of ${totalPages}` : '');
   }
 
   // Render 25 slots — fill with cards, then empty placeholders to fill the 5x5
@@ -1210,7 +1188,7 @@ function renderCurrentPage() {
     const l = pageItems[i];
     if (l) {
       const tile = buildListingTile(l);
-      if (aestheticsMode) {
+      if (state.aestheticsMode) {
         tile.classList.add('aesthetics-tile');
         attachDragHandlers(tile, l);
         tile.addEventListener('click', e => {
@@ -1234,23 +1212,23 @@ function renderCurrentPage() {
     } else {
       const empty = document.createElement('div');
       empty.className = 'card-tile empty-slot';
-      if (sleeveImageUrl) {
+      if (state.sleeveImageUrl) {
         empty.classList.add('has-sleeve');
-        empty.style.backgroundImage = `url(${sleeveImageUrl})`;
+        empty.style.backgroundImage = `url(${state.sleeveImageUrl})`;
       }
       grid.appendChild(empty);
     }
   }
 
   // Pagination controls — mirror the same ‹ 1 2 3 › row above and below the grid.
-  const goToPage = (p) => { currentPage = p; renderCurrentPage(); };
+  const goToPage = (p) => { state.currentPage = p; renderCurrentPage(); };
   const buildPagination = (container) => {
     if (!container || totalPages <= 1) return;
-    container.appendChild(pageButton('‹', currentPage > 1, () => goToPage(currentPage - 1)));
+    container.appendChild(pageButton('‹', state.currentPage > 1, () => goToPage(state.currentPage - 1)));
     for (let p = 1; p <= totalPages; p++) {
-      container.appendChild(pageButton(String(p), true, () => goToPage(p), p === currentPage));
+      container.appendChild(pageButton(String(p), true, () => goToPage(p), p === state.currentPage));
     }
-    container.appendChild(pageButton('›', currentPage < totalPages, () => goToPage(currentPage + 1)));
+    container.appendChild(pageButton('›', state.currentPage < totalPages, () => goToPage(state.currentPage + 1)));
   };
   buildPagination(pagTopEl);
   buildPagination(pagEl);
@@ -1262,13 +1240,13 @@ function renderCurrentPage() {
     const multi = totalPages > 1;
     sidePrev.style.display = multi ? '' : 'none';
     sideNext.style.display = multi ? '' : 'none';
-    sidePrev.disabled = currentPage <= 1;
-    sideNext.disabled = currentPage >= totalPages;
-    sidePrev.onclick = () => { if (currentPage > 1) goToPage(currentPage - 1); };
-    sideNext.onclick = () => { if (currentPage < totalPages) goToPage(currentPage + 1); };
+    sidePrev.disabled = state.currentPage <= 1;
+    sideNext.disabled = state.currentPage >= totalPages;
+    sidePrev.onclick = () => { if (state.currentPage > 1) goToPage(state.currentPage - 1); };
+    sideNext.onclick = () => { if (state.currentPage < totalPages) goToPage(state.currentPage + 1); };
   }
 
-  if (lastShowEditControls) wireEditHandlers();
+  if (state.lastShowEditControls) wireEditHandlers();
 }
 
 function pageButton(label, enabled, onClick, isActive) {
@@ -1341,9 +1319,9 @@ document.addEventListener('keydown', e => {
 });
 
 function openLightbox(index) {
-  if (!currentListings.length) return;
+  if (!state.currentListings.length) return;
   ensureLightbox();
-  lightboxIndex = Math.max(0, Math.min(index, currentListings.length - 1));
+  lightboxIndex = Math.max(0, Math.min(index, state.currentListings.length - 1));
   renderLightbox();
   lightboxEl.hidden = false;
   document.body.style.overflow = 'hidden';   // freeze background scroll
@@ -1357,7 +1335,7 @@ function closeLightbox() {
 
 function lightboxStep(dir) {
   const next = lightboxIndex + dir;
-  if (next < 0 || next >= currentListings.length) return;
+  if (next < 0 || next >= state.currentListings.length) return;
   lightboxIndex = next;
   renderLightbox();
 }
@@ -1365,10 +1343,10 @@ function lightboxStep(dir) {
 function renderLightbox() {
   const el = lightboxEl;
   if (!el) return;
-  const total = currentListings.length;
+  const total = state.currentListings.length;
   if (!total) { closeLightbox(); return; }
   if (lightboxIndex > total - 1) lightboxIndex = total - 1;
-  const l = currentListings[lightboxIndex];
+  const l = state.currentListings[lightboxIndex];
   const c = l.cards || {};
   const url = c.image_url_lg || c.image_url || '';
 
@@ -1382,8 +1360,8 @@ function renderLightbox() {
   el.querySelector('.bl-code').textContent = l.card_code;
   el.querySelector('.bl-qty').textContent  = `×${l.quantity}`;
 
-  const deck = l.deck_id ? decksById[l.deck_id] : null;
-  const isWishlist = binderFlair === 'wishlist';
+  const deck = l.deck_id ? state.decksById[l.deck_id] : null;
+  const isWishlist = state.binderFlair === 'wishlist';
   let pills = '';
   if (l.listing_type && !deck && !isWishlist) {
     pills += `<span class="listing-pill listing-${l.listing_type}">${listingLabel(l.listing_type)}</span>`;
@@ -1395,7 +1373,7 @@ function renderLightbox() {
   // Mirrors the tile's received-btn: sparkle, close the lightbox, then mark
   // received (which decrements/removes the row and re-renders the grid).
   const actions = el.querySelector('.bl-actions');
-  if (isWishlist && lastShowEditControls) {
+  if (isWishlist && state.lastShowEditControls) {
     actions.innerHTML = `<button class="received-btn bl-gotit" type="button" title="Mark this card as collected">GOT IT!</button>`;
     actions.querySelector('.bl-gotit').addEventListener('click', e => {
       e.stopPropagation();
@@ -1416,12 +1394,12 @@ function buildListingTile(l) {
   const c = l.cards || {};
   const tile = document.createElement('div');
   tile.className = 'card-tile';
-  if (sleeveImageUrl) {
+  if (state.sleeveImageUrl) {
     tile.classList.add('has-sleeve');
-    tile.style.backgroundImage = `url(${sleeveImageUrl})`;
+    tile.style.backgroundImage = `url(${state.sleeveImageUrl})`;
   }
-  const deck = l.deck_id ? decksById[l.deck_id] : null;
-  const isWishlist = binderFlair === 'wishlist';
+  const deck = l.deck_id ? state.decksById[l.deck_id] : null;
+  const isWishlist = state.binderFlair === 'wishlist';
   // Wishlist cards have no trade/sell status — never show the listing pill.
   const typePill = (l.listing_type && !deck && !isWishlist)
     ? `<span class="listing-pill listing-${l.listing_type}">${listingLabel(l.listing_type)}</span>`
@@ -1431,11 +1409,11 @@ function buildListingTile(l) {
     : '';
   const qtyBadge = `<span class="card-qty-badge${deck ? ' card-qty-badge-need' : ''}">×${l.quantity}</span>`;
   // Owner action on a wishlist binder: mark a card as received (got it).
-  const receivedBtn = (isWishlist && lastShowEditControls)
+  const receivedBtn = (isWishlist && state.lastShowEditControls)
     ? `<button class="received-btn" data-id="${l.id}" title="Mark this card as collected">GOT IT!</button>`
     : '';
   const notesHtml = '';
-  const editControls = lastShowEditControls ? `
+  const editControls = state.lastShowEditControls ? `
     <div class="card-edit-controls">
       <label>Qty <input type="number" min="1" value="${l.quantity}" data-id="${l.id}" class="qty-input form-input small"></label>
       ${isWishlist ? '' : `<select class="type-select form-input small" data-id="${l.id}">
@@ -1471,9 +1449,9 @@ function renderDeckFilter() {
   const sel   = document.getElementById('cbDeck');
   if (!group || !sel) return;
 
-  const deckIds = [...new Set(allListings.map(l => l.deck_id).filter(Boolean))]
-    .filter(id => decksById[id]);
-  if (!isOwner || binderFlair !== 'wishlist' || !deckIds.length) {
+  const deckIds = [...new Set(state.allListings.map(l => l.deck_id).filter(Boolean))]
+    .filter(id => state.decksById[id]);
+  if (!state.isOwner || state.binderFlair !== 'wishlist' || !deckIds.length) {
     group.style.display = 'none';
     sel.value = '';
     return;
@@ -1484,7 +1462,7 @@ function renderDeckFilter() {
     + '<option value="__deck__">Deck cards only</option>'
     + '<option value="__manual__">Manual only</option>';
   deckIds
-    .map(id => decksById[id])
+    .map(id => state.decksById[id])
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .forEach(d => { html += `<option value="${d.id}">${escapeHtml(d.name || 'Deck')}</option>`; });
   sel.innerHTML = html;
@@ -1502,7 +1480,7 @@ function filterBinderListings() {
   // Bypass filters entirely when "Show all (ignore filters)" toggle is on
   const exclude = document.getElementById('cbExcludeBinder');
   if (exclude && exclude.checked) {
-    renderListings(allListings);
+    renderListings(state.allListings);
     return;
   }
 
@@ -1522,7 +1500,7 @@ function filterBinderListings() {
   const subtype   = document.getElementById('cbSubtype').value;
   const hpMin     = document.getElementById('cbHp').value;
 
-  const filtered = allListings.filter(l => {
+  const filtered = state.allListings.filter(l => {
     const c = l.cards || {};
     if (deckSel === '__deck__'   && !l.deck_id) return false;
     if (deckSel === '__manual__' &&  l.deck_id) return false;
@@ -1534,13 +1512,13 @@ function filterBinderListings() {
     if (series && c.series !== series) return false;
     if (rarity && c.rarity !== rarity) return false;
 
-    if (binderCategory === 'pokemon') {
+    if (state.binderCategory === 'pokemon') {
       // `type` here means elemental type, stored as text[] in `types`.
       if (ctype && !(Array.isArray(c.types) && c.types.includes(ctype))) return false;
       if (supertype && c.supertype !== supertype) return false;
       if (subtype && !(Array.isArray(c.subtypes) && c.subtypes.includes(subtype))) return false;
       if (hpMin && (c.hp == null || c.hp < parseInt(hpMin, 10))) return false;
-    } else if (binderCategory === 'cyberpunk') {
+    } else if (state.binderCategory === 'cyberpunk') {
       const tag = document.getElementById('cbTag').value;
       const ram = document.getElementById('cbRam').value;
       if (color && c.color !== color) return false;
@@ -1565,20 +1543,20 @@ function wireEditHandlers() {
     inp.addEventListener('change', async () => {
       const id = inp.dataset.id, q = parseInt(inp.value, 10);
       if (!q || q < 1) return;
-      if (DEMO) { const l = allListings.find(x => x.id === id); if (l) l.quantity = q; return; }
+      if (state.DEMO) { const l = state.allListings.find(x => x.id === id); if (l) l.quantity = q; return; }
       await window.sb.from('listings').update({ quantity: q }).eq('id', id);
     });
   });
   grid.querySelectorAll('.type-select').forEach(sel => {
     sel.addEventListener('change', async () => {
-      if (DEMO) { const l = allListings.find(x => x.id === sel.dataset.id); if (l) l.listing_type = sel.value; return; }
+      if (state.DEMO) { const l = state.allListings.find(x => x.id === sel.dataset.id); if (l) l.listing_type = sel.value; return; }
       await window.sb.from('listings').update({ listing_type: sel.value }).eq('id', sel.dataset.id);
     });
   });
   grid.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Remove this listing?')) return;
-      if (DEMO) { allListings = allListings.filter(l => l.id !== btn.dataset.id); loadListings(true, true); return; }
+      if (state.DEMO) { state.allListings = state.allListings.filter(l => l.id !== btn.dataset.id); loadListings(true, true); return; }
       await window.sb.from('listings').delete().eq('id', btn.dataset.id);
       loadListings(true, true);
     });
@@ -1587,7 +1565,7 @@ function wireEditHandlers() {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       burstSparkles(e.clientX, e.clientY);
-      const l = allListings.find(x => x.id === btn.dataset.id);
+      const l = state.allListings.find(x => x.id === btn.dataset.id);
       if (l) markReceived(l);
     });
   });
@@ -1630,13 +1608,13 @@ function markReceived(l) {
   // and the sparkle + dropping count are the feedback.
   // Optimistic local update — instant feedback, no full reload between clicks:
   // one copy collected ⇒ decrement the wishlist row, remove it at zero.
-  const idx = allListings.findIndex(x => x.id === l.id);
+  const idx = state.allListings.findIndex(x => x.id === l.id);
   if (idx >= 0) {
-    const row = allListings[idx];
-    if ((row.quantity || 1) > 1) allListings[idx] = { ...row, quantity: row.quantity - 1 };
-    else allListings.splice(idx, 1);
+    const row = state.allListings[idx];
+    if ((row.quantity || 1) > 1) state.allListings[idx] = { ...row, quantity: row.quantity - 1 };
+    else state.allListings.splice(idx, 1);
   }
-  pendingKeepPage = currentPage; // stay on the page the user is viewing
+  state.pendingKeepPage = state.currentPage; // stay on the page the user is viewing
   filterBinderListings();        // re-render the current view from the updated cache
 
   // Persist in the background, serialized so concurrent clicks can't read a
@@ -1647,7 +1625,7 @@ function markReceived(l) {
 }
 
 async function persistReceive(l) {
-  if (DEMO) return;
+  if (state.DEMO) return;
   if (l.deck_id) {
     // Add one owned copy to the deck; its trigger shrinks/removes this row.
     const { data: dc } = await window.sb.from('deck_cards')
@@ -1675,17 +1653,17 @@ async function persistReceive(l) {
 function setupCollab() {
   const el = document.getElementById('binderCollab');
   if (!el) return;
-  if (!canEdit) { el.style.display = 'none'; return; }
+  if (!state.canEdit) { el.style.display = 'none'; return; }
   // Only trade binders support a co-editing partner — wishlist/flex/lgs can't
   // be shared. (Collaborators only ever exist on trade binders, so the
   // collaborator-view branch below is unaffected.)
-  if (isOwner && binderFlair !== 'trade') { el.style.display = 'none'; return; }
+  if (state.isOwner && state.binderFlair !== 'trade') { el.style.display = 'none'; return; }
   el.style.display = '';
 
   const refresh = async () => {
     const { data: collabs } = await window.sb
-      .rpc('binder_collaborators_list', { p_binder_id: currentBinderId });
-    if (isOwner) {
+      .rpc('binder_collaborators_list', { p_binder_id: state.currentBinderId });
+    if (state.isOwner) {
       const list = collabs || [];
       const chips = list.map(c =>
         `<span class="collab-chip">${escapeHtml(c.display_name || 'partner')}<button class="collab-remove" data-uid="${c.user_id}" title="Remove" aria-label="Remove">×</button></span>`).join('');
@@ -1714,7 +1692,7 @@ function setupCollab() {
     if (errEl) { errEl.textContent = ''; errEl.style.color = ''; }
     const name = prompt("Enter your partner's display name to share this binder with them:");
     if (!name || !name.trim()) return;
-    const { error } = await window.sb.rpc('share_binder', { p_binder_id: currentBinderId, p_display_name: name.trim() });
+    const { error } = await window.sb.rpc('share_binder', { p_binder_id: state.currentBinderId, p_display_name: name.trim() });
     if (error) { if (errEl) errEl.textContent = error.message; return; }
     await refresh();
     const e2 = document.getElementById('collabError');
@@ -1722,7 +1700,7 @@ function setupCollab() {
   };
   const removeCollab = async (uid) => {
     if (!confirm('Remove this person from the binder?')) return;
-    const { error } = await window.sb.rpc('unshare_binder', { p_binder_id: currentBinderId, p_user_id: uid });
+    const { error } = await window.sb.rpc('unshare_binder', { p_binder_id: state.currentBinderId, p_user_id: uid });
     const errEl = document.getElementById('collabError');
     if (error) { if (errEl) errEl.textContent = error.message; return; }
     refresh();
@@ -1736,16 +1714,16 @@ function setupCollab() {
 // off, both can still edit and see changes on manual refresh.
 let realtimeChannel = null;
 function subscribeBinderRealtime() {
-  if (!window.sb || !window.sb.channel || !currentBinderId) return;
+  if (!window.sb || !window.sb.channel || !state.currentBinderId) return;
   if (realtimeChannel) { try { window.sb.removeChannel(realtimeChannel); } catch (e) {} realtimeChannel = null; }
   realtimeChannel = window.sb
-    .channel('binder-' + currentBinderId)
+    .channel('binder-' + state.currentBinderId)
     .on('postgres_changes',
-      { event: '*', schema: 'public', table: 'listings', filter: 'binder_id=eq.' + currentBinderId },
+      { event: '*', schema: 'public', table: 'listings', filter: 'binder_id=eq.' + state.currentBinderId },
       () => {
-        if (aestheticsMode) return; // don't yank the grid out from under a drag
-        pendingKeepPage = currentPage;
-        loadListings(canEdit, lastIsLoggedIn);
+        if (state.aestheticsMode) return; // don't yank the grid out from under a drag
+        state.pendingKeepPage = state.currentPage;
+        loadListings(state.canEdit, state.lastIsLoggedIn);
       })
     .subscribe();
 }
@@ -1758,7 +1736,7 @@ function setupShare(profile) {
   const feedback  = document.getElementById('shareFeedback');
   if (!btn) return;
 
-  const shareUrl = `${location.origin}/binder.html?id=${currentBinderId}`;
+  const shareUrl = `${location.origin}/binder.html?id=${state.currentBinderId}`;
   urlInput.value = shareUrl;
 
   btn.style.display = '';
