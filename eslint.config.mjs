@@ -8,7 +8,9 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/', 'js/vendor/'],
+    // js/vendor/ holds third-party minified bundles (Sentry) — not our code.
+    // .tmp/ is gitignored local scratch — lint should match what CI sees.
+    ignores: ['node_modules/', 'playwright-report/', 'test-results/', 'tests/e2e/', 'js/vendor/', '.tmp/'],
   },
   js.configs.recommended,
   {
