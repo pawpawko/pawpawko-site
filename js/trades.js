@@ -399,12 +399,6 @@
   }
 
   const escapeHtml = window.PK.escapeHtml;
-  function slugifyPart(s) {
-    return (s || '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-+|-+$/g, '');
-  }
-  function clientSlug(displayName, binderName) {
-    return `${slugifyPart(displayName)}_${slugifyPart(binderName)}`;
-  }
 
   // ====================================================================
   // Card-search autocomplete
