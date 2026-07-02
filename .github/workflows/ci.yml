@@ -2,10 +2,9 @@ name: CI
 
 # Lint + unit tests on every push and PR.
 #
-# NOTE: the Playwright e2e suite (`npm run e2e`) is NOT run here yet. The
-# smoke specs hit the production Supabase project (anon, read-only) and the
-# signed-in specs need TEST_EMAIL / TEST_PASSWORD secrets plus a test-account
-# strategy. Wire it up once that's decided.
+# NOTE: the Playwright e2e suite (`npm run e2e`) is NOT run here — it hits
+# the production Supabase project (anon smoke + signed-in flows under the
+# dedicated test account). It runs nightly instead: see e2e-nightly.yml.
 
 on:
   push:
