@@ -7,7 +7,8 @@
 import { state } from './state.js';
 import { startBinderDemo } from './demo.js';
 import { wireAestheticsToggle, enterAesthetics, exitAesthetics, attachDragHandlers, openMovePagePicker } from './aesthetics.js';
-import { initCardBrowser, populateDropdowns, loadCards } from './browser.js';
+import { initCardBrowser, loadCards } from './browser.js';
+import { toggleSearch } from './search.js';
 import { binderContent, editBtn, doneBtn, actionsBar, applyLayout, setUrlParam, applyGameUI, getPageSize, listingLabel, escapeHtml, wireImgFallbacks, ICON_PIN, ICON_TRAIN, ICON_SHOP, metaRow } from './helpers.js';
 
 const setupNotice = document.getElementById('setupNotice');
@@ -253,43 +254,6 @@ export function exitEdit() {
   setUrlParam('aesthetics', null);
 }
 
-// ----- Non-owner search mode -----
-let searchInited = false;
-function toggleSearch() {
-  const btn = document.getElementById('searchThisBinder');
-  const wasPressed = btn.getAttribute('aria-pressed') === 'true';
-  const nowPressed = !wasPressed;
-  btn.setAttribute('aria-pressed', String(nowPressed));
-  if (nowPressed) {
-    binderContent.classList.add('searching');
-    if (!searchInited) {
-      initSearchFilters();
-      searchInited = true;
-    }
-    filterBinderListings();
-  } else {
-    binderContent.classList.remove('searching');
-    renderListings(state.allListings);
-  }
-}
-
-async function initSearchFilters() {
-  await populateDropdowns();
-  ['cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp'].forEach(id => {
-    document.getElementById(id).addEventListener('change', filterBinderListings);
-  });
-  document.getElementById('cbName').addEventListener('input', () => {
-    clearTimeout(state.cbDebounceTimer);
-    state.cbDebounceTimer = setTimeout(filterBinderListings, 250);
-  });
-  document.getElementById('cbClear').addEventListener('click', () => {
-    ['cbName','cbSeries','cbColor','cbType','cbCost','cbAttribute','cbRarity','cbSupertype','cbSubtype','cbHp','cbTag','cbRam'].forEach(id => {
-      document.getElementById(id).value = '';
-    });
-    filterBinderListings();
-  });
-}
-
 // ------------------- Add-to-binder modal -------------------
 let activeCard = null;
 
@@ -493,7 +457,7 @@ window.addEventListener('resize', () => {
   if (ps !== lastPageSize) { lastPageSize = ps; state.currentPage = 1; renderCurrentPage(); }
 });
 
-function renderListings(listings) {
+export function renderListings(listings) {
   state.currentListings = listings || [];
   if (state.pendingKeepPage != null) {
     // Stay on the page the user was on (e.g. after "Got it"); renderCurrentPage
