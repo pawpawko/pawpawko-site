@@ -9,34 +9,18 @@
 // leader, 5-deck cap (profiles.deck_limit). This UI mirrors them for
 // instant feedback and relies on the deck_validity RPC as source of truth.
 
+import { state } from './state.js';
+
 const setupNotice = document.getElementById('setupNotice');
 setupNotice.innerHTML = window.PK.notReadyMessage();
 
 const GAME = 'optcg';
 const $ = (id) => document.getElementById(id);
 
-let user = null;
-let deck = null;            // current decks row
-let isDeckOwner = true;     // viewer owns the open deck (vs. a shared-deck collaborator)
-let openSeq = 0;            // bumped per openDeck() so a stale load can't render over a newer deck
-let leaderCard = null;      // cards row for the leader (base print)
-let leaderArts = [];        // base + _p alt-art prints of the leader
-let artIdx = 0;             // current art (persisted per deck in localStorage)
 const artKey = (deckId) => `pawpaw:deckArt:${deckId}`;
-let cardArt = {};           // base card code -> print row shown on the grid tile (arrow override, else art_mix majority)
-let artOverride = {};       // base card code -> print code picked with the zoom arrows (per-user display pref, localStorage)
 const cardArtKey = (deckId) => `pawpaw:deckCardArt:${deckId}`;
-let printInfo = {};         // print card_code -> cards row (images) for prints referenced by art_mix / overrides
-let ARTMIX_OK = true;       // flips false when deck_cards.art_mix isn't migrated yet (feature stays dark)
-let deckCards = [];         // deck_cards rows
-let cardInfo = {};          // card_code -> cards row
-let ownedElsewhere = {};    // base card_code -> { qty, binders:[name] } across your non-wishlist binders
-let exceptions = {};        // card_code -> max_copies (null = unlimited, 0 = banned)
-let rotatedPrefixes = new Set();  // set prefixes out of Standard (e.g. OP01)
-let rotationExempt = new Set();   // base codes legal despite a rotated prefix
 
 // ---- Signed-out interactive demo ----
-let DEMO = false;                 // true when no user: real editor, no DB writes
 // Ko's GU Monkey.D.Luffy deck as [code, quantity, owned] — 50 cards, 37 owned,
 // 13 missing across five cards (OP16-032 all 4 missing, the rest partial).
 const DEMO_DECK = [
@@ -64,7 +48,7 @@ const COLOR_ABBREV = { Red: 'R', Green: 'G', Blue: 'U', Purple: 'P', Black: 'B',
 const colorAbbrev = (color) => String(color || '').split('/')
   .map(c => COLOR_ABBREV[c.trim()] || (c.trim()[0] || '').toUpperCase()).join('');
 const standardLegal = (code) =>
-  !rotatedPrefixes.has(baseCode(code).split('-')[0]) || rotationExempt.has(baseCode(code));
+  !state.rotatedPrefixes.has(baseCode(code).split('-')[0]) || state.rotationExempt.has(baseCode(code));
 const pillValue = (groupId) =>
   document.querySelector(`#${groupId} .pill-choice-btn.active`)?.dataset.value;
 const setPill = (groupId, value) => {
@@ -75,17 +59,17 @@ const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = se
 const esc = window.PK.escapeHtml;
 
 async function init() {
-  user = await window.PK.currentUser();
-  if (!user) { DEMO = true; user = { id: '__demo__' }; }
+  state.user = await window.PK.currentUser();
+  if (!state.user) { state.DEMO = true; state.user = { id: '__demo__' }; }
 
   const [{ data: exRows }, { data: rotSets }, { data: rotEx }] = await Promise.all([
     window.sb.from('deck_rule_exceptions').select('card_code,max_copies').eq('game', GAME),
     window.sb.from('rotated_sets').select('set_prefix').eq('game', GAME),
     window.sb.from('rotation_exempt_cards').select('card_code').eq('game', GAME),
   ]);
-  (exRows || []).forEach(r => { exceptions[r.card_code] = r.max_copies; });
-  rotatedPrefixes = new Set((rotSets || []).map(r => r.set_prefix));
-  rotationExempt = new Set((rotEx || []).map(r => r.card_code));
+  (exRows || []).forEach(r => { state.exceptions[r.card_code] = r.max_copies; });
+  state.rotatedPrefixes = new Set((rotSets || []).map(r => r.set_prefix));
+  state.rotationExempt = new Set((rotEx || []).map(r => r.card_code));
 
   $('ndClose').addEventListener('click', closeNewDeck);
   $('ndOverlay').addEventListener('click', (e) => { if (e.target === $('ndOverlay')) closeNewDeck(); });
@@ -162,7 +146,7 @@ async function init() {
     else showList(true);
   });
 
-  if (DEMO) { await startDemo(); return; }
+  if (state.DEMO) { await startDemo(); return; }
 
   // Deep-link / refresh restore: ?deck=<id> reopens that deck's editor.
   const deepLink = new URLSearchParams(location.search).get('deck');
@@ -176,33 +160,33 @@ async function init() {
 // of Ko's deck. Writes are stubbed (guarded by DEMO) so nothing saves; reads
 // (card art, prices, stats) use the world-readable cards table. ----
 async function startDemo() {
-  deck = { id: '__demo__', name: 'GU Monkey.D.Luffy Deck', leader_card_code: 'OP16-022', format: 'standard', user_id: user.id, is_public: false };
-  isDeckOwner = true;
-  ownedElsewhere = {}; cardArt = {}; artOverride = {}; leaderArts = [];
-  deckCards = DEMO_DECK.map(([card_code, quantity, owned]) => ({ card_code, quantity, owned, art_mix: {} }));
-  bench = DEMO_BENCH.map(b => ({ code: b.code, qty: b.qty, owned: b.owned }));
-  const codes = deckCards.map(r => r.card_code).concat(bench.map(b => b.code));
+  state.deck = { id: '__demo__', name: 'GU Monkey.D.Luffy Deck', leader_card_code: 'OP16-022', format: 'standard', user_id: state.user.id, is_public: false };
+  state.isDeckOwner = true;
+  state.ownedElsewhere = {}; state.cardArt = {}; state.artOverride = {}; state.leaderArts = [];
+  state.deckCards = DEMO_DECK.map(([card_code, quantity, owned]) => ({ card_code, quantity, owned, art_mix: {} }));
+  state.bench = DEMO_BENCH.map(b => ({ code: b.code, qty: b.qty, owned: b.owned }));
+  const codes = state.deckCards.map(r => r.card_code).concat(state.bench.map(b => b.code));
   const [{ data: L }, { data: cs }] = await Promise.all([
-    window.sb.from('cards').select('card_code,name,color,cost,life,image_url,image_url_lg,types,attribute').eq('game', GAME).eq('card_code', deck.leader_card_code).maybeSingle(),
+    window.sb.from('cards').select('card_code,name,color,cost,life,image_url,image_url_lg,types,attribute').eq('game', GAME).eq('card_code', state.deck.leader_card_code).maybeSingle(),
     window.sb.from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types').eq('game', GAME).in('card_code', codes),
   ]);
-  leaderCard = L || null;
-  (cs || []).forEach(c => { cardInfo[c.card_code] = c; });
+  state.leaderCard = L || null;
+  (cs || []).forEach(c => { state.cardInfo[c.card_code] = c; });
 
   // Seed one stack as base+alt mixed so the composition pips/fan show in the
   // demo (picks the first deck card that actually has an alt print in prod).
   try {
     const { data: prints } = await window.sb.from('cards')
       .select('card_code,image_url,image_url_lg').eq('game', GAME)
-      .or(deckCards.map(r => `card_code.like.${r.card_code}_p*`).join(','));
+      .or(state.deckCards.map(r => `card_code.like.${r.card_code}_p*`).join(','));
     const byBase = {};
     (prints || []).forEach(p => {
-      printInfo[p.card_code] = p;
+      state.printInfo[p.card_code] = p;
       const b = baseCode(p.card_code);
       (byBase[b] = byBase[b] || []).push(p.card_code);
     });
-    const target = deckCards.find(r => r.quantity >= 3 && byBase[r.card_code])
-      || deckCards.find(r => r.quantity >= 2 && byBase[r.card_code]);
+    const target = state.deckCards.find(r => r.quantity >= 3 && byBase[r.card_code])
+      || state.deckCards.find(r => r.quantity >= 2 && byBase[r.card_code]);
     if (target) target.art_mix = { [byBase[target.card_code].sort()[0]]: 2 };
   } catch (e) {}
   rebuildCardArt();
@@ -217,18 +201,18 @@ async function startDemo() {
   ew.style.display = '';
   $('backToDecks').style.display = 'none';
 
-  $('edDeckName').value = deck.name; $('edDeckName').readOnly = true;
-  setPill('edFormat', deck.format);
+  $('edDeckName').value = state.deck.name; $('edDeckName').readOnly = true;
+  setPill('edFormat', state.deck.format);
 
   // Leader alt arts: same swap as signed-in (in-memory only in the demo).
   const { data: lArts } = await window.sb
     .from('cards').select('card_code,image_url,image_url_lg')
-    .eq('game', GAME).like('card_code', deck.leader_card_code + '%');
-  const lRe = new RegExp(`^${deck.leader_card_code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
-  leaderArts = (lArts || []).filter(c => lRe.test(c.card_code))
+    .eq('game', GAME).like('card_code', state.deck.leader_card_code + '%');
+  const lRe = new RegExp(`^${state.deck.leader_card_code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
+  state.leaderArts = (lArts || []).filter(c => lRe.test(c.card_code))
     .sort((a, b) => a.card_code.localeCompare(b.card_code));
-  artIdx = 0;
-  $('edArtBtn').style.display = leaderArts.length > 1 ? '' : 'none';
+  state.artIdx = 0;
+  $('edArtBtn').style.display = state.leaderArts.length > 1 ? '' : 'none';
   applyLeaderArt();
   $('edPublishOpts').style.display = 'none';
 
@@ -243,9 +227,9 @@ async function startDemo() {
   // bench) to paste back so it can be baked into DEMO_DECK / DEMO_BENCH.
   window.PKDemoExport = () => {
     const out = {
-      deck: deckCards.map(r => [r.card_code, r.quantity, r.owned]),
-      bench: bench.map(b => ({ code: b.code, qty: b.qty, owned: b.owned })),
-      format: deck.format,
+      deck: state.deckCards.map(r => [r.card_code, r.quantity, r.owned]),
+      bench: state.bench.map(b => ({ code: b.code, qty: b.qty, owned: b.owned })),
+      format: state.deck.format,
     };
     const json = JSON.stringify(out);
     try { navigator.clipboard.writeText(JSON.stringify(out, null, 2)); } catch (e) {}
@@ -255,9 +239,9 @@ async function startDemo() {
 }
 
 function demoValidity() {
-  const total = deckCards.reduce((s, r) => s + r.quantity, 0);
-  const owned = deckCards.reduce((s, r) => s + Math.min(r.owned, r.quantity), 0);
-  const missing = deckCards.reduce((s, r) => s + Math.max(0, r.quantity - r.owned), 0);
+  const total = state.deckCards.reduce((s, r) => s + r.quantity, 0);
+  const owned = state.deckCards.reduce((s, r) => s + Math.min(r.owned, r.quantity), 0);
+  const missing = state.deckCards.reduce((s, r) => s + Math.max(0, r.quantity - r.owned), 0);
   const valid = total === 50;
   return { valid, total_cards: total, owned_cards: owned, missing_cards: missing, owned_complete: missing === 0, problems: valid ? [] : [`${total} of 50 cards`] };
 }
@@ -301,7 +285,7 @@ async function loadDecks() {
   const { data: owned, error } = await window.sb
     .from('decks')
     .select('id, name, leader_card_code, is_public, listing_type, format, created_at, updated_at')
-    .eq('user_id', user.id)
+    .eq('user_id', state.user.id)
     .order('updated_at', { ascending: false });
   if (error) { $('decksCount').textContent = error.message; return; }
 
@@ -412,7 +396,7 @@ async function createDeck(leader) {
 
   const { data, error } = await window.sb
     .from('decks')
-    .insert({ user_id: user.id, game: GAME, leader_card_code: leader.card_code,
+    .insert({ user_id: state.user.id, game: GAME, leader_card_code: leader.card_code,
               name: `${leader.color ? colorAbbrev(leader.color) + ' ' : ''}${leader.name} Deck`,
               format: pillValue('ndFormat') || 'standard' })
     .select('id').single();
@@ -428,7 +412,7 @@ async function createDeck(leader) {
   const fails = [];
   if (listRows) {
     for (const [code, qty] of listRows) {
-      cardInfo[code] = listInfo[code];
+      state.cardInfo[code] = listInfo[code];
       const { error: e2 } = await window.sb.from('deck_cards')
         .insert({ deck_id: data.id, card_code: code, quantity: qty });
       if (e2) fails.push(`${code}: ${e2.message}`);
@@ -447,26 +431,26 @@ function showList(fromPop = false) {
   $('editorWrap').style.display = 'none';
   $('cpEditorWrap').style.display = 'none';   // hide any registered TCG-module editor
   $('decksWrap').style.display = '';
-  deck = null;
+  state.deck = null;
   loadDecks();
 }
 
 // push=true when the user navigates list -> editor (so browser Back
 // returns to the list); deep links and popstate restores replace instead.
 async function openDeck(deckId, push = false) {
-  const seq = ++openSeq;
+  const seq = ++state.openSeq;
   // Clear the previous deck's cards up front so a slow load never flashes the
   // old deck while the new one is still fetching.
-  deckCards = [];
-  bench = [];
+  state.deckCards = [];
+  state.bench = [];
   $('edDeckGrid').innerHTML = '';
   $('edBenchGrid').innerHTML = '';
   $('edBenchSection').style.display = 'none';
   $('edBenchBtn').setAttribute('aria-expanded', 'false');
   const { data: d, error } = await window.sb.from('decks').select('*').eq('id', deckId).single();
-  if (seq !== openSeq) return;             // a newer openDeck() superseded this one
+  if (seq !== state.openSeq) return;             // a newer openDeck() superseded this one
   if (error || !d) { showList(); return; } // stale/foreign id (e.g. old link) -> list
-  deck = d;
+  state.deck = d;
 
   // TCG-module dispatch: a non-default game (e.g. cyberpunk) has its own
   // self-contained editor. One Piece has no module → falls through to the
@@ -481,10 +465,10 @@ async function openDeck(deckId, push = false) {
     return mod.open(d, seq);
   }
 
-  isDeckOwner = (d.user_id === user.id);   // collaborators co-edit but can't publish/delete
+  state.isDeckOwner = (d.user_id === state.user.id);   // collaborators co-edit but can't publish/delete
   // Owner-only controls: publishing and deleting stay with the deck owner.
-  $('edEyeBtn').closest('.eye-wrap').style.display = isDeckOwner ? '' : 'none';
-  $('edDeleteBtn').style.display = isDeckOwner ? '' : 'none';
+  $('edEyeBtn').closest('.eye-wrap').style.display = state.isDeckOwner ? '' : 'none';
+  $('edDeleteBtn').style.display = state.isDeckOwner ? '' : 'none';
   setupDeckCollab();
   const url = `decks.html?deck=${d.id}`; // survives hard refresh
   if (push) history.pushState(null, '', url);
@@ -494,19 +478,19 @@ async function openDeck(deckId, push = false) {
     // ("If your Leader has the {X} type / <Y> attribute") in the stats panel.
     .from('cards').select('card_code,name,color,cost,life,image_url,image_url_lg,types,attribute')
     .eq('game', GAME).eq('card_code', d.leader_card_code).single();
-  if (seq !== openSeq) return;             // superseded while fetching the leader
-  leaderCard = L;
+  if (seq !== state.openSeq) return;             // superseded while fetching the leader
+  state.leaderCard = L;
 
   // Alt arts: the base print plus its _p variants (same card number).
   const { data: arts } = await window.sb
     .from('cards').select('card_code,image_url,image_url_lg')
     .eq('game', GAME).like('card_code', d.leader_card_code + '%');
   const artRe = new RegExp(`^${d.leader_card_code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(_p\\d+)?$`, 'i');
-  leaderArts = (arts || []).filter(c => artRe.test(c.card_code))
+  state.leaderArts = (arts || []).filter(c => artRe.test(c.card_code))
     .sort((a, b) => a.card_code.localeCompare(b.card_code));
   const savedArt = localStorage.getItem(artKey(d.id));
-  artIdx = Math.max(0, leaderArts.findIndex(c => c.card_code === savedArt));
-  $('edArtBtn').style.display = leaderArts.length > 1 ? '' : 'none';
+  state.artIdx = Math.max(0, state.leaderArts.findIndex(c => c.card_code === savedArt));
+  $('edArtBtn').style.display = state.leaderArts.length > 1 ? '' : 'none';
   applyLeaderArt();
 
   $('decksWrap').style.display = 'none';
@@ -518,15 +502,15 @@ async function openDeck(deckId, push = false) {
 
   // Tile display art: explicit arrow choices (per-user, localStorage) beat
   // the art_mix majority print; print images are fetched with printInfo.
-  cardArt = {};
-  artOverride = {};
-  try { artOverride = JSON.parse(localStorage.getItem(cardArtKey(d.id)) || '{}') || {}; } catch (e) {}
+  state.cardArt = {};
+  state.artOverride = {};
+  try { state.artOverride = JSON.parse(localStorage.getItem(cardArtKey(d.id)) || '{}') || {}; } catch (e) {}
 
-  if (seq !== openSeq) return;
+  if (seq !== state.openSeq) return;
   await loadOwnedElsewhere();
-  if (seq !== openSeq) return;
+  if (seq !== state.openSeq) return;
   await reloadDeckCards();
-  if (seq !== openSeq) return;
+  if (seq !== state.openSeq) return;
   await loadBench();
   subscribeDeckCardsRealtime();  // live co-edit for shared decks
 }
@@ -540,19 +524,19 @@ async function openDeck(deckId, push = false) {
 let deckCardsChannel = null;
 let deckReloadTimer = null;
 function subscribeDeckCardsRealtime() {
-  if (!window.sb || !window.sb.channel || !deck) return;
+  if (!window.sb || !window.sb.channel || !state.deck) return;
   unsubscribeDeckCards();
-  const myId = deck.id;
+  const myId = state.deck.id;
   deckCardsChannel = window.sb
     .channel('deckcards-' + myId)
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'deck_cards', filter: 'deck_id=eq.' + myId },
       () => {
-        if (dcPending > 0) return;             // local burst in flight; settle reconciles
-        if (!deck || deck.id !== myId) return; // switched decks
+        if (state.dcPending > 0) return;             // local burst in flight; settle reconciles
+        if (!state.deck || state.deck.id !== myId) return; // switched decks
         clearTimeout(deckReloadTimer);
         deckReloadTimer = setTimeout(() => {
-          if (dcPending === 0 && deck && deck.id === myId) reloadDeckCards();
+          if (state.dcPending === 0 && state.deck && state.deck.id === myId) reloadDeckCards();
         }, 300);
       })
     .subscribe();
@@ -571,15 +555,15 @@ function setupDeckCollab() {
   el.style.display = '';
 
   const refresh = async () => {
-    if (!isDeckOwner) {
+    if (!state.isDeckOwner) {
       el.innerHTML = `<div class="collab-row"><span class="collab-label">Shared deck</span> <span class="collab-none">you're a co-editor</span></div>`;
       return;
     }
     // Accepted collaborator(s) take priority; otherwise surface a still-pending
     // invite so the owner sees who they invited in place of the "+ Add" button.
     const [{ data: collabs }, { data: pending }] = await Promise.all([
-      window.sb.rpc('deck_collaborators_list', { p_deck_id: deck.id }),
-      window.sb.rpc('deck_pending_invite', { p_deck_id: deck.id }),
+      window.sb.rpc('deck_collaborators_list', { p_deck_id: state.deck.id }),
+      window.sb.rpc('deck_pending_invite', { p_deck_id: state.deck.id }),
     ]);
     const list = collabs || [];
     const invite = (pending && pending[0]) || null;
@@ -615,11 +599,11 @@ function setupDeckCollab() {
     // account a deck can be shared with. Editable; OK confirms. Empty when no
     // trade binder is shared yet (share_deck then raises a helpful error).
     let suggested = '';
-    const { data: tp } = await window.sb.rpc('deck_trade_partner', { p_deck_id: deck.id });
+    const { data: tp } = await window.sb.rpc('deck_trade_partner', { p_deck_id: state.deck.id });
     if (tp && tp[0]) suggested = tp[0].display_name || '';
     const name = prompt("Share this deck with your trade-binder partner. They'll get a notification to accept.", suggested);
     if (name === null || !name.trim()) return;
-    const { error } = await window.sb.rpc('share_deck', { p_deck_id: deck.id, p_display_name: name.trim() });
+    const { error } = await window.sb.rpc('share_deck', { p_deck_id: state.deck.id, p_display_name: name.trim() });
     if (error) { if (errEl) errEl.textContent = error.message; return; }
     await refresh();
     const e2 = $('deckCollabError');
@@ -627,14 +611,14 @@ function setupDeckCollab() {
   };
   const rescindInvite = async () => {
     if (!confirm('Cancel the pending invite?')) return;
-    const { error } = await window.sb.rpc('rescind_deck_invite', { p_deck_id: deck.id });
+    const { error } = await window.sb.rpc('rescind_deck_invite', { p_deck_id: state.deck.id });
     const errEl = $('deckCollabError');
     if (error) { if (errEl) errEl.textContent = error.message; return; }
     refresh();
   };
   const unshareDeck = async (uid) => {
     if (!confirm('Remove your partner from this deck?')) return;
-    const { error } = await window.sb.rpc('unshare_deck', { p_deck_id: deck.id, p_user_id: uid });
+    const { error } = await window.sb.rpc('unshare_deck', { p_deck_id: state.deck.id, p_user_id: uid });
     const errEl = $('deckCollabError');
     if (error) { if (errEl) errEl.textContent = error.message; return; }
     refresh();
@@ -646,46 +630,46 @@ function setupDeckCollab() {
 // Fetch image rows for every print referenced by art_mix or an arrow override.
 async function ensurePrintInfo() {
   const want = new Set();
-  deckCards.forEach(r => {
-    Object.keys(artMixOf(r)).forEach(k => { if (!printInfo[k]) want.add(k); });
-    const ov = artOverride[r.card_code];
-    if (ov && ov !== r.card_code && !printInfo[ov]) want.add(ov);
+  state.deckCards.forEach(r => {
+    Object.keys(artMixOf(r)).forEach(k => { if (!state.printInfo[k]) want.add(k); });
+    const ov = state.artOverride[r.card_code];
+    if (ov && ov !== r.card_code && !state.printInfo[ov]) want.add(ov);
   });
   if (!want.size) return;
   const { data } = await window.sb.from('cards')
     .select('card_code,image_url,image_url_lg').eq('game', GAME).in('card_code', [...want]);
-  (data || []).forEach(p => { printInfo[p.card_code] = p; });
+  (data || []).forEach(p => { state.printInfo[p.card_code] = p; });
 }
 function persistArtOverride() {
-  if (DEMO || !deck) return;
-  try { localStorage.setItem(cardArtKey(deck.id), JSON.stringify(artOverride)); } catch (e) {}
+  if (state.DEMO || !state.deck) return;
+  try { localStorage.setItem(cardArtKey(state.deck.id), JSON.stringify(state.artOverride)); } catch (e) {}
 }
 // Derive each tile's display print: an explicit arrow choice (including
 // "base") wins; otherwise the art_mix print with the most copies (ties to base).
 function rebuildCardArt() {
-  cardArt = {};
-  deckCards.forEach(r => {
-    const ov = artOverride[r.card_code];
+  state.cardArt = {};
+  state.deckCards.forEach(r => {
+    const ov = state.artOverride[r.card_code];
     if (ov) {
-      if (ov !== r.card_code && printInfo[ov]) cardArt[r.card_code] = printInfo[ov];
+      if (ov !== r.card_code && state.printInfo[ov]) state.cardArt[r.card_code] = state.printInfo[ov];
       return;
     }
     const mix = artMixOf(r);
     let bestCode = null, bestN = r.quantity - altCountOf(r); // base copy count
     Object.keys(mix).sort().forEach(k => { if (mix[k] > bestN) { bestN = mix[k]; bestCode = k; } });
-    if (bestCode && printInfo[bestCode]) cardArt[r.card_code] = printInfo[bestCode];
+    if (bestCode && state.printInfo[bestCode]) state.cardArt[r.card_code] = state.printInfo[bestCode];
   });
 }
 
 function applyLeaderArt() {
-  const art = leaderArts[artIdx] || leaderCard || {};
+  const art = state.leaderArts[state.artIdx] || state.leaderCard || {};
   $('edLeaderImg').src = art.image_url_lg || art.image_url || '';
 }
 
 function cycleLeaderArt() {
-  if (leaderArts.length < 2 || !deck) return;
-  artIdx = (artIdx + 1) % leaderArts.length;
-  if (!DEMO) localStorage.setItem(artKey(deck.id), leaderArts[artIdx].card_code);
+  if (state.leaderArts.length < 2 || !state.deck) return;
+  state.artIdx = (state.artIdx + 1) % state.leaderArts.length;
+  if (!state.DEMO) localStorage.setItem(artKey(state.deck.id), state.leaderArts[state.artIdx].card_code);
   applyLeaderArt();
 }
 
@@ -695,11 +679,11 @@ function cycleLeaderArt() {
 // deck open and keyed by base code so alt-art prints (OP12-041_p1) count
 // toward the same number the deck tracks.
 async function loadOwnedElsewhere() {
-  ownedElsewhere = {};
-  if (!deck || !user) return;
+  state.ownedElsewhere = {};
+  if (!state.deck || !state.user) return;
   const { data: binders } = await window.sb
     .from('binders').select('id,name,flair')
-    .eq('user_id', user.id).eq('category', GAME);
+    .eq('user_id', state.user.id).eq('category', GAME);
   const owned = (binders || []).filter(b => b.flair !== 'wishlist');
   if (!owned.length) return;
   const nameById = {};
@@ -709,7 +693,7 @@ async function loadOwnedElsewhere() {
     .in('binder_id', owned.map(b => b.id));
   (rows || []).forEach(r => {
     const base = baseCode(r.card_code);
-    const e = ownedElsewhere[base] || (ownedElsewhere[base] = { qty: 0, binders: [] });
+    const e = state.ownedElsewhere[base] || (state.ownedElsewhere[base] = { qty: 0, binders: [] });
     e.qty += r.quantity || 0;
     const nm = nameById[r.binder_id];
     if (nm && !e.binders.includes(nm)) e.binders.push(nm);
@@ -717,12 +701,12 @@ async function loadOwnedElsewhere() {
 }
 
 async function reloadDeckCards() {
-  const myId = deck && deck.id;          // the deck we're loading for
+  const myId = state.deck && state.deck.id;          // the deck we're loading for
   let rows = null;
-  if (ARTMIX_OK) {
+  if (state.ARTMIX_OK) {
     const res = await window.sb.from('deck_cards')
       .select('card_code,quantity,owned,art_mix').eq('deck_id', myId);
-    if (res.error) ARTMIX_OK = false;    // pre-migration: column missing → feature stays dark
+    if (res.error) state.ARTMIX_OK = false;    // pre-migration: column missing → feature stays dark
     else rows = res.data;
   }
   if (!rows) {
@@ -730,18 +714,18 @@ async function reloadDeckCards() {
       .select('card_code,quantity,owned').eq('deck_id', myId);
     rows = res.data;
   }
-  if (!deck || deck.id !== myId) return; // deck switched mid-load — drop stale data
-  deckCards = rows || [];
-  const missing = deckCards.map(r => r.card_code).filter(c => !cardInfo[c]);
+  if (!state.deck || state.deck.id !== myId) return; // deck switched mid-load — drop stale data
+  state.deckCards = rows || [];
+  const missing = state.deckCards.map(r => r.card_code).filter(c => !state.cardInfo[c]);
   if (missing.length) {
     const { data: cards } = await window.sb
       .from('cards').select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types')
       .eq('game', GAME).in('card_code', missing);
-    (cards || []).forEach(c => { cardInfo[c.card_code] = c; });
+    (cards || []).forEach(c => { state.cardInfo[c.card_code] = c; });
   }
-  if (!deck || deck.id !== myId) return; // re-check after the second await
+  if (!state.deck || state.deck.id !== myId) return; // re-check after the second await
   await ensurePrintInfo();
-  if (!deck || deck.id !== myId) return;
+  if (!state.deck || state.deck.id !== myId) return;
   rebuildCardArt();
   renderDeck();
   refreshValidity();
@@ -815,7 +799,7 @@ const cardZoom = (() => {
       </div>`;
   }
   function setBenchOwned(c, value) {
-    const b = bench.find(x => x.code === c);
+    const b = state.bench.find(x => x.code === c);
     if (!b) return;
     const v = Math.max(0, Math.min(b.qty, isNaN(value) ? b.owned : value));
     if (v === b.owned) return;
@@ -824,7 +808,7 @@ const cardZoom = (() => {
     renderEdit(); // refresh stepper state (disabled buttons / owned-full)
   }
   function setBenchQty(c, value) {
-    const b = bench.find(x => x.code === c);
+    const b = state.bench.find(x => x.code === c);
     if (!b) return;
     const v = Math.max(0, isNaN(value) ? b.qty : value);
     if (v === b.qty) return;
@@ -837,7 +821,7 @@ const cardZoom = (() => {
   function renderEdit() {
     const box = ov.querySelector('.cz-edit');
     if (zone === 'bench') {
-      const b = code ? bench.find(x => x.code === code) : null;
+      const b = code ? state.bench.find(x => x.code === code) : null;
       if (!b) { box.innerHTML = ''; box.style.display = 'none'; return; }
       box.style.display = '';
       box.innerHTML = benchEditHTML(b);
@@ -846,7 +830,7 @@ const cardZoom = (() => {
           e.stopPropagation();
           const kind = btn.closest('.stepper').dataset.kind;
           const d = parseInt(btn.dataset.d, 10);
-          const cur = bench.find(x => x.code === b.code) || {};
+          const cur = state.bench.find(x => x.code === b.code) || {};
           if (kind === 'qty') setBenchQty(b.code, (cur.qty || 0) + d);
           else setBenchOwned(b.code, (cur.owned || 0) + d);
         });
@@ -862,7 +846,7 @@ const cardZoom = (() => {
       });
       return;
     }
-    const r = code ? deckCards.find(x => x.card_code === code) : null;
+    const r = code ? state.deckCards.find(x => x.card_code === code) : null;
     if (!r) { box.innerHTML = ''; box.style.display = 'none'; return; } // not a deck card → image only
     box.style.display = '';
     box.innerHTML = editHTML(r);
@@ -891,8 +875,8 @@ const cardZoom = (() => {
     const pipBox = ov.querySelector('.cz-pips');
     box.innerHTML = '';
     pipBox.innerHTML = '';
-    const r = (zone === 'deck' && code) ? deckCards.find(x => x.card_code === code) : null;
-    const usable = r && arts.length > 1 && r.quantity >= 1 && r.quantity <= 8 && (DEMO || ARTMIX_OK);
+    const r = (zone === 'deck' && code) ? state.deckCards.find(x => x.card_code === code) : null;
+    const usable = r && arts.length > 1 && r.quantity >= 1 && r.quantity <= 8 && (state.DEMO || state.ARTMIX_OK);
     box.hidden = !usable;
     pipBox.hidden = !usable;
     if (!usable) return;
@@ -941,10 +925,10 @@ const cardZoom = (() => {
     applyArt();
     const a = arts[artIdx];
     if (zone !== 'deck' || !code || !a) return;
-    const r = deckCards.find(x => x.card_code === code);
+    const r = state.deckCards.find(x => x.card_code === code);
     if (!r) return;
-    if (!isBase(a.card_code)) printInfo[a.card_code] = a;
-    artOverride[r.card_code] = a.card_code;
+    if (!isBase(a.card_code)) state.printInfo[a.card_code] = a;
+    state.artOverride[r.card_code] = a.card_code;
     persistArtOverride();
     rebuildCardArt();
     renderDeck();
@@ -975,7 +959,7 @@ const cardZoom = (() => {
   async function show(c, opts) {
     zone = (opts && opts.zone) || 'deck';
     const base = String(c.card_code).split('_')[0];
-    const override = cardArt[base]; // open on the tile's display print, if any
+    const override = state.cardArt[base]; // open on the tile's display print, if any
     const url = (override && (override.image_url_lg || override.image_url)) || (c && (c.image_url_lg || c.image_url));
     if (!url) return;
     const el = ensure();
@@ -991,7 +975,7 @@ const cardZoom = (() => {
     const list = await loadArts(base);
     if (code !== c.card_code) return; // another card opened during the await
     arts = list;
-    list.forEach(a => { if (!isBase(a.card_code)) printInfo[a.card_code] = a; });
+    list.forEach(a => { if (!isBase(a.card_code)) state.printInfo[a.card_code] = a; });
     const shown = override ? override.card_code : c.card_code;
     artIdx = Math.max(0, list.findIndex(a => a.card_code === shown));
     applyArt();
@@ -1002,11 +986,11 @@ const cardZoom = (() => {
   function refresh() {
     if (!ov || ov.hidden || !code) return;
     if (zone === 'bench') {
-      if (!bench.find(x => x.code === code)) { hide(); return; }
+      if (!state.bench.find(x => x.code === code)) { hide(); return; }
       renderEdit();
       return;
     }
-    if (!deckCards.find(x => x.card_code === code)) { hide(); return; }
+    if (!state.deckCards.find(x => x.card_code === code)) { hide(); return; }
     renderEdit();
     renderFan();
   }
@@ -1024,10 +1008,10 @@ function renderDeck() {
   const grid = $('edDeckGrid');
   grid.innerHTML = '';
 
-  const sorted = deckCards.slice().sort(byCostThenCode);
+  const sorted = state.deckCards.slice().sort(byCostThenCode);
 
   sorted.forEach(r => {
-    const c = cardInfo[r.card_code] || {};
+    const c = state.cardInfo[r.card_code] || {};
     const tile = document.createElement('div');
     tile.className = 'deck-card-tile'
       + (r.owned < r.quantity ? ' missing' : ''); // owned-short → highlightable
@@ -1043,14 +1027,14 @@ function renderDeck() {
     const incTitle = ownMode ? 'All copies owned' : 'Max copies in deck';
     // Badge shows total qty normally; while highlighting missing the
     // owned-short tiles swap to their missing count (highlighted).
-    const art = cardArt[r.card_code]; // chosen alt-art print (set in magnified view)
+    const art = state.cardArt[r.card_code]; // chosen alt-art print (set in magnified view)
     // Collection cross-check: this card is owned-short in the deck but you
     // physically hold copies in a non-wishlist binder. Badge → click to mark
     // owned (bumps deck `owned` up to cover your binder count, never down).
     // Show the badge only when your collection has MORE copies than you've
     // already marked owned — otherwise clicking would be a no-op (it never
     // marks owned beyond what you physically hold).
-    const oe = ownedElsewhere[r.card_code];
+    const oe = state.ownedElsewhere[r.card_code];
     const oeAvail = (r.owned < r.quantity && oe && oe.qty > r.owned) ? oe : null;
     const oeBadge = oeAvail
       ? `<span class="own-elsewhere" role="button" tabindex="0" title="You have ×${oeAvail.qty} in ${esc(oeAvail.binders.join(', '))} — click to mark owned">📦 ×${oeAvail.qty}</span>`
@@ -1146,8 +1130,8 @@ function wireStepper(btn, code) {
 
 // copy cap for a base code: undefined exception -> 4; null -> unlimited; n -> n
 function capFor(code) {
-  if (!(code in exceptions)) return 4;
-  return exceptions[code]; // null = unlimited
+  if (!(code in state.exceptions)) return 4;
+  return state.exceptions[code]; // null = unlimited
 }
 
 // ---- Serialized deck-card writes ----
@@ -1158,11 +1142,10 @@ function capFor(code) {
 // One reconcile fetch runs once the burst settles (also rolling back anything
 // the gatekeeper trigger rejected).
 let dcQueue = Promise.resolve();
-let dcPending = 0;
 function queueDeckWrite(writer) {
-  if (DEMO) { refreshValidity(); return; }  // demo: local-only, never touch the DB
-  dcPending++;
-  const settle = () => { if (--dcPending === 0) reloadDeckCards().then(renderBrowser); };
+  if (state.DEMO) { refreshValidity(); return; }  // demo: local-only, never touch the DB
+  state.dcPending++;
+  const settle = () => { if (--state.dcPending === 0) reloadDeckCards().then(renderBrowser); };
   dcQueue = dcQueue.then(writer).then(settle, (e) => {
     const msg = (e && e.message) || 'Update failed.';
     $('cbError').textContent = msg;
@@ -1173,35 +1156,35 @@ function queueDeckWrite(writer) {
 function renderDeckLocal() { renderDeck(); renderBrowser(); cardZoom.refresh(); }
 // Persist a card's per-copy art composition (alt print code -> copies).
 function setArtMix(code, mix) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (!row) return;
   row.art_mix = mix;
   rebuildCardArt();
   renderDeckLocal();
   queueDeckWrite(async () => {
     const { error } = await window.sb.from('deck_cards')
-      .update({ art_mix: mix }).eq('deck_id', deck.id).eq('card_code', code);
+      .update({ art_mix: mix }).eq('deck_id', state.deck.id).eq('card_code', code);
     if (error) throw error;
   });
 }
 function localSetRow(code, fields) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (row) Object.assign(row, fields);
   renderDeckLocal();
 }
 function localRemoveRow(code) {
-  const i = deckCards.findIndex(r => r.card_code === code);
-  if (i >= 0) deckCards.splice(i, 1);
+  const i = state.deckCards.findIndex(r => r.card_code === code);
+  if (i >= 0) state.deckCards.splice(i, 1);
   renderDeckLocal();
 }
 async function readDeckCard(code) {
   const { data } = await window.sb.from('deck_cards').select('quantity, owned')
-    .eq('deck_id', deck.id).eq('card_code', code).maybeSingle();
+    .eq('deck_id', state.deck.id).eq('card_code', code).maybeSingle();
   return data;
 }
 
 function stepCard(code, kind, delta) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (!row) return;
   $('edError').textContent = '';
   if (kind === 'qty') {
@@ -1221,11 +1204,11 @@ function stepCard(code, kind, delta) {
       if (!cur) return;
       const q = cur.quantity + delta;
       if (q <= 0) {
-        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
+        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', state.deck.id).eq('card_code', code);
         if (error) throw error;
       } else {
         const { error } = await window.sb.from('deck_cards')
-          .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', deck.id).eq('card_code', code);
+          .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', state.deck.id).eq('card_code', code);
         if (error) throw error;
       }
     });
@@ -1237,7 +1220,7 @@ function stepCard(code, kind, delta) {
       if (!cur) return;
       const o = Math.max(0, Math.min(cur.quantity, cur.owned + delta));
       const { error } = await window.sb.from('deck_cards')
-        .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+        .update({ owned: o }).eq('deck_id', state.deck.id).eq('card_code', code);
       if (error) throw error;
     });
   }
@@ -1246,7 +1229,7 @@ function stepCard(code, kind, delta) {
 // Hold-to-jump: qty min=1 / max=copy cap (50 if unlimited); owned min=0 /
 // max=quantity. (Holding qty "-" stops at 1, never deletes the card.)
 function setCardValue(code, kind, target) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (!row) return;
   $('edError').textContent = '';
   if (kind === 'qty') {
@@ -1258,7 +1241,7 @@ function setCardValue(code, kind, target) {
       const cur = await readDeckCard(code);
       if (!cur) return;
       const { error } = await window.sb.from('deck_cards')
-        .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', deck.id).eq('card_code', code);
+        .update({ quantity: q, owned: Math.min(cur.owned, q) }).eq('deck_id', state.deck.id).eq('card_code', code);
       if (error) throw error;
     });
   } else {
@@ -1270,7 +1253,7 @@ function setCardValue(code, kind, target) {
       if (!cur) return;
       const oo = target === 'min' ? 0 : cur.quantity;
       const { error } = await window.sb.from('deck_cards')
-        .update({ owned: oo }).eq('deck_id', deck.id).eq('card_code', code);
+        .update({ owned: oo }).eq('deck_id', state.deck.id).eq('card_code', code);
       if (error) throw error;
     });
   }
@@ -1279,7 +1262,7 @@ function setCardValue(code, kind, target) {
 // Set an exact value from typed input (magnified-view qty/owned fields).
 // qty: clamped to [0, cap] (0 removes the card); owned: clamped to [0, qty].
 function setCardAbsolute(code, kind, value) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (!row) return;
   let n = parseInt(value, 10);
   if (isNaN(n)) return; // ignore non-numeric input
@@ -1295,11 +1278,11 @@ function setCardAbsolute(code, kind, value) {
       const cur = await readDeckCard(code);
       if (!cur) return;
       if (target <= 0) {
-        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code);
+        const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', state.deck.id).eq('card_code', code);
         if (error) throw error;
       } else {
         const { error } = await window.sb.from('deck_cards')
-          .update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', deck.id).eq('card_code', code);
+          .update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', state.deck.id).eq('card_code', code);
         if (error) throw error;
       }
     });
@@ -1312,7 +1295,7 @@ function setCardAbsolute(code, kind, value) {
       if (!cur) return;
       const o = Math.max(0, Math.min(cur.quantity, target));
       const { error } = await window.sb.from('deck_cards')
-        .update({ owned: o }).eq('deck_id', deck.id).eq('card_code', code);
+        .update({ owned: o }).eq('deck_id', state.deck.id).eq('card_code', code);
       if (error) throw error;
     });
   }
@@ -1323,29 +1306,28 @@ function setCardAbsolute(code, kind, value) {
 // deck in localStorage only, so server-side validity / wishlist sync /
 // Cost-to-Finish (all keyed off the 50 in deck_cards) are untouched. Drag a
 // bench card onto a deck card to swap, or onto the deck/bench to move across.
-let bench = [];            // [{ code, qty, owned }]
 let dragSrc = null;        // { zone:'deck'|'bench', code } while dragging
 
 function benchKey(id) { return `pawpaw:deckBench:${id}`; }
-function saveBench() { if (DEMO) return; try { localStorage.setItem(benchKey(deck.id), JSON.stringify(bench)); } catch (e) {} }
+function saveBench() { if (state.DEMO) return; try { localStorage.setItem(benchKey(state.deck.id), JSON.stringify(state.bench)); } catch (e) {} }
 function readBenchLocal() {
   try {
-    const a = JSON.parse(localStorage.getItem(benchKey(deck.id)) || '[]');
+    const a = JSON.parse(localStorage.getItem(benchKey(state.deck.id)) || '[]');
     return Array.isArray(a) ? a.filter(x => x && x.code && x.qty > 0).map(x => ({ code: x.code, qty: x.qty, owned: Math.max(0, Math.min(x.qty, x.owned || 0)) })) : [];
   } catch (e) { return []; }
 }
 async function loadBench() {
-  bench = readBenchLocal();
-  const need = bench.map(b => b.code).filter(c => !cardInfo[c]);
+  state.bench = readBenchLocal();
+  const need = state.bench.map(b => b.code).filter(c => !state.cardInfo[c]);
   if (need.length) {
     const { data } = await window.sb.from('cards')
       .select('card_code,name,color,cost,type,image_url,image_url_lg,counter,effect_text,types')
       .eq('game', GAME).in('card_code', need);
-    (data || []).forEach(c => { cardInfo[c.card_code] = c; });
+    (data || []).forEach(c => { state.cardInfo[c.card_code] = c; });
   }
   renderBench();
 }
-function benchCount() { return bench.reduce((s, b) => s + b.qty, 0); }
+function benchCount() { return state.bench.reduce((s, b) => s + b.qty, 0); }
 function updateBenchBtn() {
   const btn = $('edBenchBtn');
   if (!btn) return;
@@ -1355,14 +1337,14 @@ function updateBenchBtn() {
 }
 function benchAdd(code, qty, owned) {
   const o = Math.max(0, Math.min(qty, owned || 0));
-  const e = bench.find(x => x.code === code);
+  const e = state.bench.find(x => x.code === code);
   if (e) { e.qty += qty; e.owned = Math.min(e.qty, (e.owned || 0) + o); }
-  else bench.push({ code, qty, owned: o });
+  else state.bench.push({ code, qty, owned: o });
   saveBench(); renderBench();
 }
 function benchRemove(code) {
-  const i = bench.findIndex(x => x.code === code);
-  if (i >= 0) bench.splice(i, 1);
+  const i = state.bench.findIndex(x => x.code === code);
+  if (i >= 0) state.bench.splice(i, 1);
   saveBench(); renderBench();
 }
 function toggleBench() {
@@ -1398,36 +1380,36 @@ function setDeckQtyAbsolute(code, target) {
   const cap = capFor(code);
   if (cap !== null) target = Math.min(target, cap);
   target = Math.max(0, target);
-  const existing = deckCards.find(r => r.card_code === code);
+  const existing = state.deckCards.find(r => r.card_code === code);
   if (target <= 0) localRemoveRow(code);
   else if (existing) localSetRow(code, { quantity: target, owned: Math.min(existing.owned, target) });
-  else { deckCards.push({ card_code: code, quantity: target, owned: 0 }); renderDeckLocal(); }
+  else { state.deckCards.push({ card_code: code, quantity: target, owned: 0 }); renderDeckLocal(); }
   queueDeckWrite(async () => {
     const cur = await readDeckCard(code);
     if (target <= 0) {
-      if (cur) { const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', deck.id).eq('card_code', code); if (error) throw error; }
+      if (cur) { const { error } = await window.sb.from('deck_cards').delete().eq('deck_id', state.deck.id).eq('card_code', code); if (error) throw error; }
     } else if (cur) {
-      const { error } = await window.sb.from('deck_cards').update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', deck.id).eq('card_code', code);
+      const { error } = await window.sb.from('deck_cards').update({ quantity: target, owned: Math.min(cur.owned, target) }).eq('deck_id', state.deck.id).eq('card_code', code);
       if (error) throw error;
     } else {
-      const { error } = await window.sb.from('deck_cards').insert({ deck_id: deck.id, card_code: code, quantity: target, owned: 0 });
+      const { error } = await window.sb.from('deck_cards').insert({ deck_id: state.deck.id, card_code: code, quantity: target, owned: 0 });
       if (error) throw error;
     }
   });
 }
 
 function moveDeckToBench(code) {
-  const row = deckCards.find(r => r.card_code === code);
+  const row = state.deckCards.find(r => r.card_code === code);
   if (!row) return;
   $('edError').textContent = '';
   benchAdd(code, row.quantity, row.owned);
   setDeckQtyAbsolute(code, 0);
 }
 function addBenchToDeck(code) {
-  const b = bench.find(x => x.code === code);
+  const b = state.bench.find(x => x.code === code);
   if (!b) return;
   const cap = capFor(code);
-  const existing = deckCards.find(r => r.card_code === code) || {};
+  const existing = state.deckCards.find(r => r.card_code === code) || {};
   const cur = existing.quantity || 0;
   const curOwned = existing.owned || 0;
   const benchedOwned = b.owned || 0;
@@ -1442,16 +1424,16 @@ function addBenchToDeck(code) {
 }
 function swapBenchIntoDeck(deckCode, benchCode) {
   if (deckCode === benchCode) return;
-  const a = deckCards.find(r => r.card_code === deckCode);
-  const b = bench.find(x => x.code === benchCode);
+  const a = state.deckCards.find(r => r.card_code === deckCode);
+  const b = state.bench.find(x => x.code === benchCode);
   if (!a || !b) return;
   $('edError').textContent = '';
   const qa = a.quantity;
   const ownedA = a.owned;
   const benchedBOwned = b.owned || 0;
   const capB = capFor(benchCode);
-  const curB = (deckCards.find(r => r.card_code === benchCode) || {}).quantity || 0;
-  const curBOwned = (deckCards.find(r => r.card_code === benchCode) || {}).owned || 0;
+  const curB = (state.deckCards.find(r => r.card_code === benchCode) || {}).quantity || 0;
+  const curBOwned = (state.deckCards.find(r => r.card_code === benchCode) || {}).owned || 0;
   let targetB = curB + qa;
   if (capB !== null) targetB = Math.min(targetB, capB);
   benchRemove(benchCode);
@@ -1509,12 +1491,12 @@ function wireDropZones() {
 // The single trade binder for this game (one per game), created on demand —
 // mirrors how the wishlist binder auto-creates. Returns its id or null.
 async function getOrCreateTradeBinder() {
-  if (!user) return null;
+  if (!state.user) return null;
   const { data: existing } = await window.sb.from('binders')
-    .select('id').eq('user_id', user.id).eq('category', GAME).eq('flair', 'trade').limit(1);
+    .select('id').eq('user_id', state.user.id).eq('category', GAME).eq('flair', 'trade').limit(1);
   if (existing && existing.length) return existing[0].id;
   const { data: created, error } = await window.sb.from('binders')
-    .insert({ user_id: user.id, name: 'Trade', category: GAME, flair: 'trade' })
+    .insert({ user_id: state.user.id, name: 'Trade', category: GAME, flair: 'trade' })
     .select('id').single();
   if (error) { console.warn('create trade binder failed:', error.message); return null; }
   return created.id;
@@ -1523,8 +1505,8 @@ async function getOrCreateTradeBinder() {
 // (increment if already listed), then drop it from the bench. Not-owned copies
 // have no trade value, so only `owned` is added.
 async function addBenchedToTradeBinder(code) {
-  if (DEMO) return;
-  const b = bench.find(x => x.code === code);
+  if (state.DEMO) return;
+  const b = state.bench.find(x => x.code === code);
   if (!b || !(b.owned > 0)) return;
   const qty = b.owned;
   const binderId = await getOrCreateTradeBinder();
@@ -1542,7 +1524,7 @@ async function addBenchedToTradeBinder(code) {
   }
   // Remove only the OWNED copies from the bench; any not-owned copies stay
   // (they have no trade value — they can only be deleted).
-  const cur = bench.find(x => x.code === code);
+  const cur = state.bench.find(x => x.code === code);
   if (cur) {
     const rem = cur.qty - qty;
     if (rem <= 0) benchRemove(code);
@@ -1555,12 +1537,12 @@ function renderBench() {
   const grid = $('edBenchGrid');
   if (!grid) return;
   grid.innerHTML = '';
-  if (!bench.length) {
+  if (!state.bench.length) {
     grid.innerHTML = '<p class="deck-bench-empty">Cards you remove (− or drag here) land here. Owned copies can go to your trade binder; others can be deleted. Cards added past 50 land here too.</p>';
     return;
   }
-  bench.slice().sort((x, y) => byCostThenCode({ card_code: x.code }, { card_code: y.code })).forEach(b => {
-    const c = cardInfo[b.code] || {};
+  state.bench.slice().sort((x, y) => byCostThenCode({ card_code: x.code }, { card_code: y.code })).forEach(b => {
+    const c = state.cardInfo[b.code] || {};
     const owned = b.owned || 0;
     const notOwned = b.qty - owned;
     // Distinctly flag each benched card as owned / not-owned / mixed.
@@ -1722,15 +1704,15 @@ function hitChance(D, T, N) {
   return 1 - pMiss;
 }
 function openStats() {
-  if (!deckValid) return; // stats only meaningful on a valid 50-card legal deck (button is also disabled)
+  if (!state.deckValid) return; // stats only meaningful on a valid 50-card legal deck (button is also disabled)
   $('stOverlay').style.display = '';
   const body = $('stBody');
-  if (!deckCards.length) { body.innerHTML = '<p class="text-muted-line">No cards in the deck yet.</p>'; return; }
+  if (!state.deckCards.length) { body.innerHTML = '<p class="text-muted-line">No cards in the deck yet.</p>'; return; }
 
   let c2000 = 0, c1000 = 0, cNone = 0, total = 0;
   const costB = {};
-  deckCards.forEach(r => {
-    const c = cardInfo[r.card_code] || {};
+  state.deckCards.forEach(r => {
+    const c = state.cardInfo[r.card_code] || {};
     total += r.quantity;
     if (c.counter === 2000) c2000 += r.quantity;
     else if (c.counter === 1000) c1000 += r.quantity;
@@ -1769,15 +1751,15 @@ function openStats() {
       ${bars || '<p class="text-muted-line">No costed cards.</p>'}
     </div>`;
 
-  const searcherRows = deckCards
-    .map(r => ({ r, meta: parseSearcher((cardInfo[r.card_code] || {}).effect_text) }))
+  const searcherRows = state.deckCards
+    .map(r => ({ r, meta: parseSearcher((state.cardInfo[r.card_code] || {}).effect_text) }))
     .filter(x => x.meta)
     .map(({ r, meta }) => {
-      const c = cardInfo[r.card_code] || {};
+      const c = state.cardInfo[r.card_code] || {};
       // Cards this searcher can reveal (excl. its own copies — that one's gone).
-      const hits = deckCards
-        .filter(x => x.card_code !== r.card_code && meta.filters.some(f => cardMatchesSub(cardInfo[x.card_code] || {}, f)))
-        .map(x => ({ name: (cardInfo[x.card_code] || {}).name || x.card_code, qty: x.quantity }))
+      const hits = state.deckCards
+        .filter(x => x.card_code !== r.card_code && meta.filters.some(f => cardMatchesSub(state.cardInfo[x.card_code] || {}, f)))
+        .map(x => ({ name: (state.cardInfo[x.card_code] || {}).name || x.card_code, qty: x.quantity }))
         .sort((a, b) => b.qty - a.qty);
       const T = hits.reduce((s, h) => s + h.qty, 0);
       const fresh = hitChance(total, T, meta.look); // top-of-fresh-deck
@@ -1787,7 +1769,7 @@ function openStats() {
       const seen = Math.min(total - meta.look, 5 + (c.cost || 0));
       const Dleft = Math.max(meta.look, total - seen);
       const live = hitChance(Dleft, T * Dleft / total, meta.look);
-      const gate = evalSearcherGate(meta.gate, leaderCard);
+      const gate = evalSearcherGate(meta.gate, state.leaderCard);
       return { r, c, meta, T, hits, fresh, live, gate };
     })
     .sort((a, b) => {
@@ -1830,12 +1812,12 @@ function openStats() {
   // Triggers — [Trigger] cards can act when they're dealt to you from your Life.
   // A leader's "cost" column is its Life value; Life cards are drawn from the 50,
   // so chance-in-life is hypergeometric (the same hitChance used for searchers).
-  const trigHits = deckCards
-    .filter(r => hasTrigger((cardInfo[r.card_code] || {}).effect_text))
-    .map(r => ({ name: (cardInfo[r.card_code] || {}).name || r.card_code, qty: r.quantity }))
+  const trigHits = state.deckCards
+    .filter(r => hasTrigger((state.cardInfo[r.card_code] || {}).effect_text))
+    .map(r => ({ name: (state.cardInfo[r.card_code] || {}).name || r.card_code, qty: r.quantity }))
     .sort((a, b) => b.qty - a.qty);
   const trigCount = trigHits.reduce((s, h) => s + h.qty, 0); // qty-weighted: counts each card's copies
-  const life = (leaderCard && (leaderCard.life ?? leaderCard.cost)) || 5;
+  const life = (state.leaderCard && (state.leaderCard.life ?? state.leaderCard.cost)) || 5;
   const trigInLife = hitChance(total, trigCount, life);
   const expTrig = total ? trigCount * life / total : 0;
   const trigColor = trigInLife >= 0.75 ? '#7ec96a' : trigInLife >= 0.5 ? '#e8b757' : '#b0506a';
@@ -1912,11 +1894,11 @@ async function populateBrowserFilters() {
 let traitPool = [], traitPoolKey = '';
 
 async function ensureTraitPool() {
-  const key = `${deck.id}:${deck.format}`;
+  const key = `${state.deck.id}:${state.deck.format}`;
   if (traitPoolKey === key) return;
   traitPoolKey = key;
   traitPool = [];
-  const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
+  const colorOr = String(state.leaderCard.color || '').split('/').filter(Boolean)
     .map(c => `color.ilike.%${c}%`).join(',');
   const set = new Set();
   let from = 0;
@@ -1930,7 +1912,7 @@ async function ensureTraitPool() {
     if (error || !data || data.length === 0) break;
     data.forEach(c => {
       if (isBase(c.card_code) && capFor(c.card_code) !== 0 &&
-          (deck.format !== 'standard' || standardLegal(c.card_code))) {
+          (state.deck.format !== 'standard' || standardLegal(c.card_code))) {
         (c.types || []).forEach(t => set.add(t));
       }
     });
@@ -1962,7 +1944,7 @@ let cbRows = [], cbShown = 0, cbFrom = 0, cbDone = false, cbSeq = 0;
 const CB_PAGE = 60, CB_FETCH = 300;
 
 async function fetchBrowserChunk() {
-  const colorOr = String(leaderCard.color || '').split('/').filter(Boolean)
+  const colorOr = String(state.leaderCard.color || '').split('/').filter(Boolean)
     .map(c => `color.ilike.%${c}%`).join(',');
   let q = window.sb
     .from('cards')
@@ -1993,12 +1975,12 @@ async function fetchBrowserChunk() {
   if (!data || data.length < CB_FETCH) cbDone = true;
   cbRows = cbRows.concat((data || []).filter(c =>
     isBase(c.card_code) && capFor(c.card_code) !== 0 &&
-    (deck.format !== 'standard' || standardLegal(c.card_code))));
+    (state.deck.format !== 'standard' || standardLegal(c.card_code))));
   return null;
 }
 
 async function loadBrowser() {
-  if (!deck || !leaderCard) return;
+  if (!state.deck || !state.leaderCard) return;
   const seq = ++cbSeq;
   cbRows = []; cbShown = 0; cbFrom = 0; cbDone = false;
   $('cbCount').textContent = 'Loading…';
@@ -2065,8 +2047,8 @@ function renderBrowser() {
     ? `${cbShown}${hasMore ? "+" : ""} cards`
     : 'No legal cards match.';
   cbRows.slice(0, cbShown).forEach(c => {
-    const inDeck = deckCards.find(r => r.card_code === c.card_code);
-    const locked = leaderLocked(c.effect_text, leaderCard);
+    const inDeck = state.deckCards.find(r => r.card_code === c.card_code);
+    const locked = leaderLocked(c.effect_text, state.leaderCard);
     const tile = document.createElement('button');
     tile.className = 'cb-tile' + (locked ? ' cb-locked' : '');
     if (locked) tile.title = "Leader-locked — this card's effect needs a different leader. Still legal to add.";
@@ -2101,11 +2083,11 @@ function addCard(card) {
   const cbErr = $('cbError');
   cbErr.textContent = '';
   cbErr.classList.remove('cb-note');
-  cardInfo[card.card_code] = card;
-  const deckTotal = deckCards.reduce((s, r) => s + r.quantity, 0);
+  state.cardInfo[card.card_code] = card;
+  const deckTotal = state.deckCards.reduce((s, r) => s + r.quantity, 0);
   if (deckTotal >= 50) { // deck is full — overflow lands on the bench
     benchAdd(card.card_code, 1, $('cbOwned').checked ? 1 : 0);
-    const bq = (bench.find(x => x.code === card.card_code) || {}).qty || 1;
+    const bq = (state.bench.find(x => x.code === card.card_code) || {}).qty || 1;
     // Running count + flash so EVERY over-50 click gives feedback, not just the
     // first (the count changes and the line re-animates on each add).
     cbErr.classList.add('cb-note');
@@ -2114,7 +2096,7 @@ function addCard(card) {
     return;
   }
   const owned = $('cbOwned').checked; // count the added copy as owned
-  const existing = deckCards.find(r => r.card_code === card.card_code);
+  const existing = state.deckCards.find(r => r.card_code === card.card_code);
   const cap = capFor(card.card_code); // null = unlimited
   if (existing && cap !== null && existing.quantity >= cap) {
     $('cbError').textContent = `Max ${cap} cop${cap === 1 ? 'y' : 'ies'} of ${card.card_code}.`;
@@ -2122,30 +2104,29 @@ function addCard(card) {
   }
   // Optimistic local update — instant ×N bump, no reload between clicks.
   if (existing) localSetRow(card.card_code, { quantity: existing.quantity + 1, owned: owned ? existing.owned + 1 : existing.owned });
-  else { deckCards.push({ card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 }); renderDeckLocal(); }
+  else { state.deckCards.push({ card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 }); renderDeckLocal(); }
 
   queueDeckWrite(async () => {
     const cur = await readDeckCard(card.card_code);
     if (cur) {
       const { error } = await window.sb.from('deck_cards')
         .update({ quantity: cur.quantity + 1, owned: owned ? (cur.owned || 0) + 1 : cur.owned })
-        .eq('deck_id', deck.id).eq('card_code', card.card_code);
+        .eq('deck_id', state.deck.id).eq('card_code', card.card_code);
       if (error) throw error;
     } else {
       const { error } = await window.sb.from('deck_cards')
-        .insert({ deck_id: deck.id, card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 });
+        .insert({ deck_id: state.deck.id, card_code: card.card_code, quantity: 1, owned: owned ? 1 : 0 });
       if (error) throw error;
     }
   });
 }
 
-let deckValid = false;
 async function refreshValidity() {
-  const v = DEMO ? demoValidity() : (await window.sb.rpc('deck_validity', { p_deck_id: deck.id })).data;
+  const v = state.DEMO ? demoValidity() : (await window.sb.rpc('deck_validity', { p_deck_id: state.deck.id })).data;
   if (!v) return;
-  deckValid = !!v.valid;
+  state.deckValid = !!v.valid;
   const statsBtn = $('edStatsBtn');
-  if (statsBtn) { statsBtn.disabled = !deckValid; statsBtn.title = deckValid ? '' : 'Deck must be valid (50 legal cards) before stats are available'; }
+  if (statsBtn) { statsBtn.disabled = !state.deckValid; statsBtn.title = state.deckValid ? '' : 'Deck must be valid (50 legal cards) before stats are available'; }
   const total = v.total_cards ?? 0;
   const miss = v.missing_cards ?? 0;
   if (!miss) ownMode = false; // nothing missing → leave owned-edit mode
@@ -2182,11 +2163,11 @@ async function refreshValidity() {
 function syncPublishUi(v) {
   const eye = $('edEyeBtn'), flair = $('edFlair');
   const publishable = !!(v.valid && v.owned_complete);
-  if (deck.is_public) {
+  if (state.deck.is_public) {
     eye.classList.add('public');
     eye.disabled = false;
     $('edEyeTip').textContent = 'Public — click to unpublish';
-    flair.textContent = deck.listing_type || 'public';
+    flair.textContent = state.deck.listing_type || 'public';
     flair.style.display = '';
   } else {
     const reasons = Array.isArray(v.problems) ? v.problems.slice() : [];
@@ -2201,63 +2182,63 @@ function syncPublishUi(v) {
     if (eye.disabled) $('edPublishOpts').style.display = 'none';
   }
   document.querySelectorAll('#edListingType .pill-choice-btn').forEach(b => {
-    b.classList.toggle('active', deck.is_public && b.dataset.value === deck.listing_type);
+    b.classList.toggle('active', state.deck.is_public && b.dataset.value === state.deck.listing_type);
   });
 }
 
 // Eye: private -> reveal the trade/sell/borrow options; public -> unpublish.
 async function onEyeClick() {
-  if (DEMO) return;
+  if (state.DEMO) return;
   $('edError').textContent = '';
-  if (!deck.is_public) {
+  if (!state.deck.is_public) {
     const opts = $('edPublishOpts');
     opts.style.display = opts.style.display === 'none' ? '' : 'none';
     return;
   }
-  const { error } = await window.sb.rpc('unpublish_deck', { p_deck_id: deck.id });
+  const { error } = await window.sb.rpc('unpublish_deck', { p_deck_id: state.deck.id });
   if (error) { $('edError').textContent = error.message; return; }
-  deck.is_public = false; deck.listing_type = null;
+  state.deck.is_public = false; state.deck.listing_type = null;
   $('edPublishOpts').style.display = 'none';
   refreshValidity();
 }
 
 // Picking a type publishes (or re-publishes) with it; server re-validates.
 async function onListingTypeClick(e) {
-  if (DEMO) return;
+  if (state.DEMO) return;
   const btn = e.target.closest('.pill-choice-btn');
-  if (!btn || (deck.is_public && btn.dataset.value === deck.listing_type)) return;
+  if (!btn || (state.deck.is_public && btn.dataset.value === state.deck.listing_type)) return;
   $('edError').textContent = '';
-  const { error } = await window.sb.rpc('publish_deck', { p_deck_id: deck.id, p_listing_type: btn.dataset.value });
+  const { error } = await window.sb.rpc('publish_deck', { p_deck_id: state.deck.id, p_listing_type: btn.dataset.value });
   if (error) { $('edError').textContent = error.message; refreshValidity(); return; }
-  deck.is_public = true; deck.listing_type = btn.dataset.value;
+  state.deck.is_public = true; state.deck.listing_type = btn.dataset.value;
   $('edPublishOpts').style.display = 'none';
   refreshValidity();
 }
 
 async function onFormatClick(e) {
   const btn = e.target.closest('.pill-choice-btn');
-  if (!btn || !deck || btn.dataset.value === deck.format) return;
-  if (DEMO) { deck.format = btn.dataset.value; return; }
+  if (!btn || !state.deck || btn.dataset.value === state.deck.format) return;
+  if (state.DEMO) { state.deck.format = btn.dataset.value; return; }
   $('edError').textContent = '';
   const { error } = await window.sb.from('decks')
-    .update({ format: btn.dataset.value }).eq('id', deck.id);
+    .update({ format: btn.dataset.value }).eq('id', state.deck.id);
   if (error) { // e.g. eternal -> standard with rotated cards still in the deck
-    setPill('edFormat', deck.format);
+    setPill('edFormat', state.deck.format);
     $('edError').textContent = error.message;
     return;
   }
-  deck.format = btn.dataset.value;
+  state.deck.format = btn.dataset.value;
   refreshValidity();
   if ($('cbOverlay').style.display !== 'none') { ensureTraitPool(); loadBrowser(); } // legality changed
 }
 
 async function renameDeck() {
-  if (DEMO) return;
+  if (state.DEMO) return;
   const name = $('edDeckName').value.trim();
-  if (!name || !deck) return;
-  const { error } = await window.sb.from('decks').update({ name }).eq('id', deck.id);
+  if (!name || !state.deck) return;
+  const { error } = await window.sb.from('decks').update({ name }).eq('id', state.deck.id);
   if (error) $('edError').textContent = error.message;
-  else deck.name = name;
+  else state.deck.name = name;
 }
 
 // ---------------- decklist import / export ----------------
@@ -2268,7 +2249,7 @@ async function renameDeck() {
 let dlMode = 'export';
 
 const byCostThenCode = (a, b) => {
-  const ca = cardInfo[a.card_code] || {}, cb = cardInfo[b.card_code] || {};
+  const ca = state.cardInfo[a.card_code] || {}, cb = state.cardInfo[b.card_code] || {};
   return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
 };
 
@@ -2318,8 +2299,8 @@ function openExport() {
   $('dlTitle').textContent = 'Export Decklist';
   $('dlHint').textContent = 'Leader first, then one line per card. Copy and share.';
   $('dlError').textContent = '';
-  const sorted = deckCards.slice().sort(byCostThenCode);
-  $('dlText').value = [`1x${deck.leader_card_code}`, ...sorted.map(r => `${r.quantity}x${r.card_code}`)].join('\n');
+  const sorted = state.deckCards.slice().sort(byCostThenCode);
+  $('dlText').value = [`1x${state.deck.leader_card_code}`, ...sorted.map(r => `${r.quantity}x${r.card_code}`)].join('\n');
   $('dlText').readOnly = true;
   $('dlAction').textContent = 'Copy';
   $('dlOwnedWrap').style.display = 'none'; // export has no owned toggle
@@ -2331,7 +2312,7 @@ function openExportMissing() {
   $('dlTitle').textContent = 'Export Missing Cards';
   $('dlError').textContent = '';
   // Just the copies you still need (quantity − owned); leader excluded (you own it).
-  const missing = deckCards.filter(r => r.quantity - r.owned > 0).sort(byCostThenCode);
+  const missing = state.deckCards.filter(r => r.quantity - r.owned > 0).sort(byCostThenCode);
   if (!missing.length) {
     $('dlHint').textContent = 'Nothing missing — every card in this deck is owned. 🎉';
     $('dlText').value = '';
@@ -2384,7 +2365,7 @@ async function doEditorImport() {
   if (missing.length) { errEl.textContent = 'Unknown card(s): ' + missing.join(', '); return; }
   for (const code of [...rows.keys()]) {
     if (info[code].type !== 'LEADER') continue;
-    if (code !== deck.leader_card_code) {
+    if (code !== state.deck.leader_card_code) {
       errEl.textContent = `This list is led by ${info[code].name} (${code}) — create a deck with that leader, then import there.`;
       return;
     }
@@ -2392,12 +2373,12 @@ async function doEditorImport() {
   }
   const markOwned = $('dlOwned').checked; // owned = quantity for every line
   $('dlAction').disabled = true;
-  await window.sb.from('deck_cards').delete().eq('deck_id', deck.id);
+  await window.sb.from('deck_cards').delete().eq('deck_id', state.deck.id);
   const fails = [];
   for (const [code, qty] of rows) {
-    cardInfo[code] = info[code];
+    state.cardInfo[code] = info[code];
     const { error } = await window.sb.from('deck_cards')
-      .insert({ deck_id: deck.id, card_code: code, quantity: qty, owned: markOwned ? qty : 0 });
+      .insert({ deck_id: state.deck.id, card_code: code, quantity: qty, owned: markOwned ? qty : 0 });
     if (error) fails.push(`${code}: ${error.message}`);
   }
   $('dlAction').disabled = false;
@@ -2427,8 +2408,8 @@ async function openPrices(mode) {
 
   // Deck = leader + every card at full quantity; Finish = only the copies you're short.
   const items = isDeck
-    ? [{ code: deck.leader_card_code, need: 1 }, ...deckCards.map(r => ({ code: r.card_code, need: r.quantity }))]
-    : deckCards.map(r => ({ code: r.card_code, need: r.quantity - r.owned })).filter(x => x.need > 0);
+    ? [{ code: state.deck.leader_card_code, need: 1 }, ...state.deckCards.map(r => ({ code: r.card_code, need: r.quantity }))]
+    : state.deckCards.map(r => ({ code: r.card_code, need: r.quantity - r.owned })).filter(x => x.need > 0);
   if (!items.length) {
     $('pcBody').innerHTML = '<p class="text-muted-line">Nothing missing — every card in this deck is owned. 🎉</p>';
     return;
@@ -2455,7 +2436,7 @@ async function openPrices(mode) {
   let total = 0, unpriced = 0, lastUpdated = null;
   const rows = items.map(x => {
     const c = priceMap[x.code] || {};
-    const info = cardInfo[x.code] || {};
+    const info = state.cardInfo[x.code] || {};
     const price = (c.price_usd != null) ? Number(c.price_usd) : null;
     if (price == null) unpriced++; else total += price * x.need;
     if (c.price_updated_at && (!lastUpdated || c.price_updated_at > lastUpdated)) lastUpdated = c.price_updated_at;
@@ -2499,21 +2480,21 @@ async function openPrices(mode) {
 }
 
 async function deleteDeck() {
-  if (DEMO) return;
+  if (state.DEMO) return;
   // Deck "owned" copies aren't tracked as binder listings, so they'd be lost
   // on delete. A single custom modal offers to move them to the trade binder
   // first (native confirm() chains get suppressed after the first dialog).
-  const ownedRows = deckCards.filter(r => r.owned > 0);
+  const ownedRows = state.deckCards.filter(r => r.owned > 0);
   const ownedCopies = ownedRows.reduce((s, r) => s + r.owned, 0);
 
-  const act = await confirmDeleteDeck(deck.name, ownedCopies);
+  const act = await confirmDeleteDeck(state.deck.name, ownedCopies);
   if (act === 'cancel') return;
   if (act === 'move') {
     const ok = await returnOwnedToCollection(ownedRows);
     if (!ok) return; // error surfaced; keep the deck so the cards aren't lost
   }
 
-  const { error } = await window.sb.from('decks').delete().eq('id', deck.id);
+  const { error } = await window.sb.from('decks').delete().eq('id', state.deck.id);
   if (error) { $('edError').textContent = error.message; return; }
   showList();
 }
@@ -2550,11 +2531,11 @@ function confirmDeleteDeck(name, ownedCopies) {
 // the same card. Returns false on error.
 async function returnOwnedToCollection(ownedRows) {
   const { data: binders } = await window.sb.from('binders')
-    .select('id,name,flair').eq('user_id', user.id).eq('category', GAME).eq('flair', 'trade');
+    .select('id,name,flair').eq('user_id', state.user.id).eq('category', GAME).eq('flair', 'trade');
   let target = (binders || [])[0];
   if (!target) {
     const { data: nb, error: ce } = await window.sb.from('binders')
-      .insert({ user_id: user.id, name: 'Collection', category: GAME, flair: 'trade' })
+      .insert({ user_id: state.user.id, name: 'Collection', category: GAME, flair: 'trade' })
       .select('id,name').single();
     if (ce) { $('edError').textContent = 'Could not create a trade binder: ' + ce.message; return false; }
     target = nb;
@@ -2606,7 +2587,7 @@ function cpCaps() {
 }
 
 async function cpOpen(d) {
-  cpDeck = d; cpOwner = (d.user_id === user.id); cpSeq++;
+  cpDeck = d; cpOwner = (d.user_id === state.user.id); cpSeq++;
   $('cpEditorWrap').style.display = '';
   $('cpDeckName').value = d.name || '';
   $('cpDeckName').disabled = !cpOwner;
@@ -2940,7 +2921,7 @@ async function cpCreateDeck() {
   if (cpChosen.length !== 3) return;
   const errEl = $('newDeckError'); errEl.textContent = '';
   const { data, error } = await window.sb.from('decks').insert({
-    user_id: user.id, game: 'cyberpunk',
+    user_id: state.user.id, game: 'cyberpunk',
     leader_card_code: cpChosen[0].card_code, name: 'Cyberpunk Deck',
   }).select('id').single();
   if (error) { errEl.textContent = error.message; return; }
