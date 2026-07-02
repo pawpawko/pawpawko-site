@@ -1,6 +1,12 @@
 -- ============================================================
--- Pawpaw Ko — Trades feature schema (one binder per user)
--- Paste this entire file into the Supabase SQL editor and run it.
+-- Pawpaw Ko — schema reference (HISTORICAL — header long predates
+-- multi-binder; the file has grown far beyond "one binder per user")
+--
+-- As of 2026-07-02 schema changes go through the Supabase CLI:
+--   npx supabase migration new <name> && npx supabase db push
+-- See scripts/applied-migrations/README.md. This file stays as the
+-- full-schema reference until a `supabase db pull` baseline replaces
+-- it (pending: needs Docker Desktop).
 -- ============================================================
 -- If you ran an earlier version of this schema, uncomment the
 -- teardown block below first to clean up old tables.
