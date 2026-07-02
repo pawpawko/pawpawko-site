@@ -10,12 +10,10 @@
 // instant feedback and relies on the deck_validity RPC as source of truth.
 
 import { state } from './state.js';
+import { GAME, $, isBase, baseCode, artMixOf, altCountOf, colorAbbrev, standardLegal, pillValue, setPill, debounce, esc, capFor, byCostThenCode } from './helpers.js';
 
 const setupNotice = document.getElementById('setupNotice');
 setupNotice.innerHTML = window.PK.notReadyMessage();
-
-const GAME = 'optcg';
-const $ = (id) => document.getElementById(id);
 
 const artKey = (deckId) => `pawpaw:deckArt:${deckId}`;
 const cardArtKey = (deckId) => `pawpaw:deckCardArt:${deckId}`;
@@ -35,28 +33,6 @@ const DEMO_BENCH = [
   { code: 'OP16-029', qty: 1, owned: 0 },
   { code: 'OP16-052', qty: 3, owned: 1 },
 ];
-
-const isBase = (code) => !/_p\d+$/i.test(code);
-const baseCode = (code) => String(code).split('_')[0];
-// art_mix: {alt print code -> copies} on a deck_cards row; base copies are
-// implied (quantity - sum). '{}'/absent = all base.
-const artMixOf = (r) => (r && r.art_mix && typeof r.art_mix === 'object') ? r.art_mix : {};
-const altCountOf = (r) => Object.values(artMixOf(r)).reduce((s, n) => s + (n > 0 ? n : 0), 0);
-// One Piece color letters (U = Blue, since B is taken by Black). Used for the
-// default deck name: "Green/Blue Uta" -> "GU Uta Deck".
-const COLOR_ABBREV = { Red: 'R', Green: 'G', Blue: 'U', Purple: 'P', Black: 'B', Yellow: 'Y' };
-const colorAbbrev = (color) => String(color || '').split('/')
-  .map(c => COLOR_ABBREV[c.trim()] || (c.trim()[0] || '').toUpperCase()).join('');
-const standardLegal = (code) =>
-  !state.rotatedPrefixes.has(baseCode(code).split('-')[0]) || state.rotationExempt.has(baseCode(code));
-const pillValue = (groupId) =>
-  document.querySelector(`#${groupId} .pill-choice-btn.active`)?.dataset.value;
-const setPill = (groupId, value) => {
-  document.querySelectorAll(`#${groupId} .pill-choice-btn`).forEach(b =>
-    b.classList.toggle('active', b.dataset.value === value));
-};
-const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-const esc = window.PK.escapeHtml;
 
 async function init() {
   state.user = await window.PK.currentUser();
@@ -1126,12 +1102,6 @@ function wireStepper(btn, code) {
     if (Date.now() - holdJustFired < 600) { e.preventDefault(); return; } // released after a hold
     stepCard(code, kind, delta);
   });
-}
-
-// copy cap for a base code: undefined exception -> 4; null -> unlimited; n -> n
-function capFor(code) {
-  if (!(code in state.exceptions)) return 4;
-  return state.exceptions[code]; // null = unlimited
 }
 
 // ---- Serialized deck-card writes ----
@@ -2247,11 +2217,6 @@ async function renameDeck() {
 // lines sum.
 
 let dlMode = 'export';
-
-const byCostThenCode = (a, b) => {
-  const ca = state.cardInfo[a.card_code] || {}, cb = state.cardInfo[b.card_code] || {};
-  return (ca.cost ?? 99) - (cb.cost ?? 99) || String(a.card_code).localeCompare(b.card_code);
-};
 
 function parseDecklist(text) {
   const rows = new Map();
