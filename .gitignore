@@ -19,20 +19,8 @@ scripts/*.pyc
 scripts/venv/
 scripts/.venv/
 
-# Node / Capacitor
+# Node
 node_modules/
-www/
-package-lock.json
-
-# Capacitor / Android
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/keystore.properties
-android/app/release/
-*.keystore
-*.jks
 
 # Logs
 *.log

@@ -4,6 +4,8 @@ A community-first pop-up gaming company and website for the trading card communi
 
 Live at **[pawpawko.com](https://pawpawko.com)**.
 
+This repo is the static website only. The mobile app is a separate Expo project: [pawpawko/pawpawko-mobile](https://github.com/pawpawko/pawpawko-mobile).
+
 Games currently supported:
 - One Piece TCG (primary)
 - Pokémon TCG
