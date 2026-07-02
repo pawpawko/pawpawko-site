@@ -81,8 +81,9 @@ window.NYC_MAJOR_SUBWAY_STOPS = Object.values(window.NYC_MAJOR_SUBWAY_STOPS_BY_B
 
 // ---------- Binder categories ----------
 window.BINDER_CATEGORIES = [
-  { value: 'optcg',   label: 'OPTCG' },
-  { value: 'pokemon', label: 'Pokémon' }
+  { value: 'optcg',     label: 'OPTCG' },
+  { value: 'pokemon',   label: 'Pokémon' },
+  { value: 'cyberpunk', label: 'Cyberpunk' }
 ];
 
 // ---------- Listing types ----------
