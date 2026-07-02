@@ -50,9 +50,10 @@ export default [
     },
   },
   {
-    // js/decks/ is native ES modules (decks.html loads js/decks/index.js via
-    // <script type="module">); everything else under js/ stays classic scripts.
-    files: ['js/decks/**/*.js'],
+    // js/decks/ and js/binder/ are native ES modules (decks.html / binder.html
+    // load their index.js via <script type="module">); everything else under
+    // js/ stays classic scripts.
+    files: ['js/decks/**/*.js', 'js/binder/**/*.js'],
     languageOptions: {
       sourceType: 'module',
     },
