@@ -11,10 +11,10 @@
 // Compared:
 //   web js/config.js LISTING_TYPES     <-> mobile LISTING_TYPES        (values + labels, in order)
 //   web js/config.js BINDER_CATEGORIES <-> mobile CATEGORY_STYLES keys (values only; labels differ by design)
-//   web js/binder-view.js FLAIR_LABELS <-> mobile FLAIR_STYLES keys    (keys only; labels/colors differ by design)
+//   web js/binder/index.js FLAIR_LABELS <-> mobile FLAIR_STYLES keys  (keys only; labels/colors differ by design)
 //
 // Extraction is brittle BY DESIGN: web config.js is evaluated in node:vm with
-// a stub window; the mobile binder-constants.ts and web binder-view.js maps
+// a stub window; the mobile binder-constants.ts and web js/binder/index.js maps
 // are pulled out with targeted regexes. If a refactor moves or reshapes those
 // blocks, the script exits 2 (parse failure) rather than silently passing.
 //
@@ -66,14 +66,15 @@ if (!Array.isArray(webListingTypes) || !webListingTypes.length)
 if (!Array.isArray(webCategories) || !webCategories.length)
   die('js/config.js: window.BINDER_CATEGORIES missing or empty');
 
-// ---------- web: js/binder-view.js FLAIR_LABELS keys ----------
-// binder-view.js owns the flair map on web. Its colors live in CSS (.flair-*)
-// and its labels intentionally differ from mobile's ("Trade Binder" vs
-// "Trade"), so only the KEYS are comparable. That file is a large page script
-// that refactors freely — if the regex stops matching, SKIP rather than fail.
+// ---------- web: js/binder/index.js FLAIR_LABELS keys ----------
+// js/binder/index.js owns the flair map on web. Its colors live in CSS
+// (.flair-*) and its labels intentionally differ from mobile's ("Trade Binder"
+// vs "Trade"), so only the KEYS are comparable. That file is a large page
+// module that refactors freely — if the regex stops matching, SKIP rather
+// than fail.
 let webFlairKeys = null;
 {
-  const src = readFileSync(join(webRoot, 'js', 'binder-view.js'), 'utf8');
+  const src = readFileSync(join(webRoot, 'js', 'binder', 'index.js'), 'utf8');
   const m = src.match(/const FLAIR_LABELS\s*=\s*\{([^}]*)\}/);
   if (m) {
     const keys = [...m[1].matchAll(/([A-Za-z_$][\w$]*)\s*:/g)].map((k) => k[1]);
@@ -140,14 +141,14 @@ check(
 );
 if (webFlairKeys) {
   check(
-    'flair keys (binder-view.js FLAIR_LABELS <-> FLAIR_STYLES keys)',
+    'flair keys (js/binder/index.js FLAIR_LABELS <-> FLAIR_STYLES keys)',
     [...webFlairKeys].sort(),
     [...mobileFlairKeys].sort(),
     fmtList
   );
 } else {
   console.log(
-    'SKIPPED flair keys — FLAIR_LABELS not found in js/binder-view.js ' +
+    'SKIPPED flair keys — FLAIR_LABELS not found in js/binder/index.js ' +
       '(regex no longer matches; update tools/check-constant-drift.mjs)'
   );
 }
