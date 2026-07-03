@@ -9,7 +9,9 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "rls-probe": "node scripts/rls-probe.mjs",
-    "drift-check": "node tools/check-constant-drift.mjs"
+    "drift-check": "node tools/check-constant-drift.mjs",
+    "partials": "node tools/stamp-partials.mjs",
+    "partials:check": "node tools/stamp-partials.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
