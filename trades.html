@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Locals | Pawpaw Ko</title>
+  <!-- partial:head-shared -->
   <link rel="icon" href="images/favicon.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,9 +14,11 @@
   <script src="js/vendor/sentry.bundle.min.js"></script>
   <script src="js/sentry-init.js"></script>
   <script>(function(){try{var r=localStorage.getItem('sb-cligjmfhxvazjarbvexp-auth-token');if(!r)return;var s=JSON.parse(r),x=s&&(s.currentSession||s);if(x&&(x.refresh_token||(x.expires_at&&x.expires_at*1000>Date.now())))document.documentElement.classList.add('is-signed-in');}catch(e){}})();</script>
+  <!-- /partial:head-shared -->
 </head>
 <body>
 
+  <!-- partial:nav -->
   <nav class="nav" id="nav">
     <div class="container">
       <div class="nav-inner">
@@ -28,7 +31,7 @@
               <a href="decks.html">Decks</a>
             </div>
           </li>
-          <li><a href="trades.html" class="active">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
+          <li><a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a></li>
         </ul>
         <div class="nav-auth" id="navAuth">
           <a href="account.html" class="nav-auth-btn">Sign In / Sign Up</a>
@@ -49,7 +52,9 @@
       </div>
     </div>
   </nav>
+  <!-- /partial:nav -->
 
+  <!-- partial:nav-mobile -->
   <nav class="nav-mobile" id="navMobile">
     <button class="nav-close" id="navClose">✕</button>
     <button class="nav-mobile-group" type="button" aria-expanded="false">My Collection</button>
@@ -60,6 +65,7 @@
     <a href="trades.html">Locals<svg class="nav-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg></a>
     <a href="account.html" id="mobileAuthLink">Account</a>
   </nav>
+  <!-- /partial:nav-mobile -->
 
   <section class="section binders-section" style="padding-top: 7rem;">
     <div class="container">
@@ -143,11 +149,13 @@
     </div>
   </footer>
 
+  <!-- partial:scripts-shared -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/escape.js"></script>
   <script src="js/supabase-client.js"></script>
   <script src="js/main.js"></script>
+  <!-- /partial:scripts-shared -->
   <script src="js/trades.js"></script>
 </body>
 </html>

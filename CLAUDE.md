@@ -25,6 +25,7 @@ Manual: `python -m http.server 8000` from this directory.
 
 ## Don't
 
+- Don't edit the shared regions between `<!-- partial:NAME -->` markers in the `*.html` pages — edit `partials/NAME.html` and run `npm run partials` (CI fails on drift via `npm run partials:check`).
 - Don't commit `scripts/.env` (already in `.gitignore`).
 - Don't write to legacy `profiles.binder_*` columns — see `project_pawpawko_gotchas.md`.
 - Don't hotlink card images from en.onepiece-cardgame.com — mirror to R2.
