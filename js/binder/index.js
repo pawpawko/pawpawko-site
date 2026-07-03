@@ -574,9 +574,12 @@ function renderDeckFilter() {
 }
 
 export function filterBinderListings() {
-  // Bypass filters entirely when "Show all (ignore filters)" toggle is on
+  // Bypass filters entirely when "Show all (ignore filters)" toggle is on.
+  // The toggle is an edit-mode control (checked by default, CSS-hidden
+  // outside `.editing`), so only honor it in edit mode — otherwise
+  // non-owner "Search this binder" mode could never filter anything.
   const exclude = document.getElementById('cbExcludeBinder');
-  if (exclude && exclude.checked) {
+  if (exclude && exclude.checked && binderContent.classList.contains('editing')) {
     renderListings(state.allListings);
     return;
   }
